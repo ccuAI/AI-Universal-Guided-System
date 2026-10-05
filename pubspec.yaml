@@ -1,0 +1,45 @@
+name: projectfront
+description: "A new Flutter project."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.0-227.0.dev
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # Firebase 相關套件
+  firebase_core: ^4.15.0
+  firebase_auth: ^6.7.0
+  
+  # 第三方登入與認證
+  google_sign_in: ^7.2.0
+  flutter_facebook_auth: ^7.0.0
+  flutter_line_sdk: ^2.5.0
+  
+  # 實用工具套件
+  cupertino_icons: ^2.0.0
+  webview_flutter: ^4.14.1
+  image_picker: ^1.2.3
+  http: ^1.2.0
+  
+  # RSS 解析（若因 Null Safety 報錯，請替換為 webfeed_revived）
+  webfeed_revised: ^0.9.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  # 將程式碼檢查工具移至開發依賴
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - "web/icons/779240515145235692.png"
+    - "web/icons/google.png"
+    - "web/icons/Line.png"
+    - "web/icons/Facebook.png"
