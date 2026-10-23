@@ -4,6 +4,10 @@ import 'secondpage.dart';
 import 'daily_med_news.dart';
 import 'hospital_helper.dart';
 import 'medicine_taker.dart';
+
+
+
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const MyApp());
@@ -21,7 +25,7 @@ class MyApp extends StatelessWidget {
         primarySwatch: Colors.blue,
       ),
       home: const LongTermCareLoginScreen(),
-      // 💡 2. 加上這段路由表註冊，導航功能才會生效！
+    
       routes: {
         'secondpage': (context) => const HomeScreen(),
         "firstpage": (context) => const LongTermCareLoginScreen(),
