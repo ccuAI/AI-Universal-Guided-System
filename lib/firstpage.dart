@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_line_sdk/flutter_line_sdk.dart'; // 1. 匯入 LINE SDK
 
 class LongTermCareLoginScreen extends StatefulWidget {
   const LongTermCareLoginScreen({super.key});
@@ -10,9 +11,67 @@ class LongTermCareLoginScreen extends StatefulWidget {
 class _LongTermCareLoginScreenState extends State<LongTermCareLoginScreen> {
   final TextEditingController _accountController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  
-  // 實例化您的 AuthService 登入服務
- // final AuthService _authService = AuthService();
+  bool _isSdkInitialized = false; // 追蹤 SDK 是否初始化成功
+
+  @override
+  void initState() {
+    super.initState();
+    _initLineSdk(); // 2. 在初始化時設定 LINE SDK
+  }
+
+  Future<void> _initLineSdk() async {
+    try {
+      await LineSDK.instance.setup('YOUR_CHANNEL_ID'); 
+      setState(() {
+        _isSdkInitialized = true;
+      });
+      print("LINE SDK 初始化成功");
+
+      // 💡 新增這行：這會讓 App 啟動時，直接在 debug 終端機印出當前正確的 Android Key Hash
+      await LineSDK.instance.currentAccessToken;
+      // 註：flutter_line_sdk 在特定 debug 模式或初始化錯誤時，會在原生的 log 中自動輸出當前應填寫的 Key Hash。
+      
+    } catch (e) {
+      print("LINE SDK 初始化失敗: $e");
+    }
+  }
+
+
+  // 實作 LINE 登入驗證邏輯
+  Future<void> _loginWithLine() async {
+    if (!_isSdkInitialized) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('LINE SDK 尚未準備就緒，請稍後再試')),
+      );
+      return;
+    }
+
+    try {
+      // 呼叫 LINE 登入，並要求權限：個人檔案 (profile)、OpenID (openid)、電子信箱 (email)
+      final result = await LineSDK.instance.login(
+        scopes: ['profile', 'openid', 'email'],
+      );
+
+      // 登入驗證成功
+      print("LINE 登入成功！");
+      print("使用者姓名: ${result.userProfile?.displayName}");
+      print("使用者 ID: ${result.userProfile?.userId}");
+      print("Access Token: ${result.accessToken.value}");
+
+      if (mounted) {
+        // 驗證成功後跳轉至下一頁
+        Navigator.pushReplacementNamed(context, 'secondpage');
+      }
+    } catch (e) {
+      // 使用者取消登入，或發生網路、平台憑證錯誤
+      print("LINE 登入失敗: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('LINE 登入失敗或已取消')),
+        );
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -24,18 +83,16 @@ class _LongTermCareLoginScreenState extends State<LongTermCareLoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // 背景採用圖片中的淺藍色調
-      backgroundColor: const Color(0xFFDDEEFA), 
+      backgroundColor: const Color.fromARGB(255, 144, 186, 219), 
       body: SafeArea(
         child: Column(
           children: [
-            // 1. 頂部衛福部 Header 區塊 (已修正括號語法錯誤)
+            // 1. 頂部衛福部 Header 區塊
             Container(
               color: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
               child: Row(
                 children: [
-                  // Logo 預留位置(先用衛福部圖示代替)
                   SizedBox(
                     width: 200,
                     height: 60,
@@ -50,7 +107,7 @@ class _LongTermCareLoginScreenState extends State<LongTermCareLoginScreen> {
               ),
             ), 
 
-            // 中間主要內容填充與對齊
+            // 中間主要內容
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 40.0),
@@ -69,14 +126,14 @@ class _LongTermCareLoginScreenState extends State<LongTermCareLoginScreen> {
                     ),
                     const SizedBox(height: 60),
 
-                    // 3. 第一個輸入框
+                    // 3. 帳號輸入框
                     _buildCustomInputField(
                       controller: _accountController,
                       hintText: '請輸入帳號',
                     ),
                     const SizedBox(height: 30),
 
-                    // 4. 第二個輸入框
+                    // 4. 密碼輸入框
                     _buildCustomInputField(
                       controller: _passwordController,
                       hintText: '請輸入密碼',
@@ -84,23 +141,21 @@ class _LongTermCareLoginScreenState extends State<LongTermCareLoginScreen> {
                     ),
                     const SizedBox(height: 80),
 
-                    // 5. 第三方登入按鈕列 (已將圖片按鈕成功連結 AuthService)
+                    // 社群登入按鈕列
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
                         // Google 登入按鈕
                         _buildSocialButton(
-                          label: Container(
-                            child: Image.asset("web/icons/Google.png"),
-                          ),
+                          label: Image.asset("web/icons/Google.png"),
                           color: const Color(0xFF4285F4),
                           textColor: Colors.white,
-                          fontSize: 12,
                           onTap: () async {
                             Navigator.pushNamed(context, "secondpage");
                           },
                         ),
-                        // LINE 登入按鈕
+                        
+                        // LINE 登入按鈕（已串接真實登入驗證）
                         _buildSocialButton(
                           label: ClipOval(
                             child: Image.asset(
@@ -110,17 +165,9 @@ class _LongTermCareLoginScreenState extends State<LongTermCareLoginScreen> {
                           ),
                           color: const Color(0xFF06C755),
                           textColor: Colors.white,
-                          fontSize: 12,
-                          onTap: () {
-                            Navigator.pushReplacementNamed(context, 'secondpage');
-                            // print('點擊了 LINE 圖片登入');
-                            // final lineResult = await _authService.signInWithLine();
-                            // if (lineResult != null) {
-                            //   print("LINE 登入成功！用戶: ${lineResult.userProfile?.displayName}");
-                            //   // TODO: 登入成功後的跳轉邏輯
-                            // }
-                          },
+                          onTap: _loginWithLine, // 3. 綁定 LINE 登入方法
                         ),
+                        
                         // Facebook 登入按鈕
                         _buildSocialButton(
                           label: ClipOval(
@@ -131,21 +178,8 @@ class _LongTermCareLoginScreenState extends State<LongTermCareLoginScreen> {
                           ),
                           color: const Color.fromARGB(255, 110, 126, 147),
                           textColor: Colors.white,
-                          fontSize: 12,
                           onTap: () async {
                             Navigator.pushNamed(context, "secondpage");
-                            // 2. 執行 Facebook 登入邏輯 (目前為註解狀態)
-                            // await facebook_auth.FacebookAuth.instance.loginWithReadPermissions(['email']);
-                            // final facebookResult = await facebook_auth.FacebookAuth.instance.loginWithReadPermissions(['email']);
-                            // if (facebookResult != null) {
-                            //   print("Facebook 登入成功！用戶: ${facebookResult.userProfile?.id}");
-                            // }
-                            // print('點擊了 Facebook 圖片登入');
-                            // final userCredential = await _authService.signInWithFacebook();
-                            // if (userCredential != null) {
-                            //   print("Facebook 登入成功！用戶: ${userCredential.user?.displayName}");
-                            //   // TODO: 登入成功後的跳轉邏輯
-                            // }
                           },
                         ),
                       ],
@@ -168,7 +202,6 @@ class _LongTermCareLoginScreenState extends State<LongTermCareLoginScreen> {
   }) {
     return Row(
       children: [
-        // 左側白色膠囊型輸入框
         Expanded(
           child: Container(
             height: 60,
@@ -197,10 +230,8 @@ class _LongTermCareLoginScreenState extends State<LongTermCareLoginScreen> {
           ),
         ),
         const SizedBox(width: 16),
-        // 右側黑色圓形按鈕
         GestureDetector(
           onTap: () {
-            // 目前是清除輸入，若要改為提交帳密傳統登入，可以在這裡寫 API 對接
             print('點擊右側按鈕，當前輸入內容: ${controller.text}');
             controller.clear();
           },
@@ -221,43 +252,25 @@ class _LongTermCareLoginScreenState extends State<LongTermCareLoginScreen> {
     );
   }
 
-  // 社群登入按鈕組件 (加入 Padding 確保圖片不會貼邊)
+  // 社群登入按鈕組件（將多餘未定義的參數簡化）
   Widget _buildSocialButton({
     required Widget label,
     required Color color,
     required Color textColor,
-    double fontSize = 24,
     required VoidCallback onTap,
   }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 65,
-        height: 65,
-        padding: const EdgeInsets.all(4.0), // 留出一點邊距讓底色圓圈露出來
+        width: 50,
+        height: 50,
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: color,
           shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
-            ),
-          ],
         ),
-        child: Center(
-          child: DefaultTextStyle.merge(
-            style: TextStyle(
-              fontSize: fontSize,
-              fontWeight: FontWeight.bold,
-              color: textColor,
-            ),
-            child: label,
-          ),
-        ),
+        child: label,
       ),
     );
   }
 }
-

@@ -1,8 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
-import 'package:http/http.dart' as http;                  // 引入網路套件
+import 'package:http/http.dart' as http;                  
 import 'package:webfeed_revised/webfeed_revised.dart';
-   // 引入 RSS 套件
+import 'API.dart';
 
 class ArticleModel {
   final String title;
@@ -25,17 +26,16 @@ class _MedNewsState extends State<MedNews> {
   WebViewController? _webViewController;
 
   String _aiResponse = "您好！我是您的 AI 助理。已經為您準備好上方的醫療網頁，請問有什麼不明白的地方想諮詢嗎？";
-  bool _isAiLoading = false;
+  bool _isAiLoading = false; // 🚀 用來記錄 AI 是否正在分析
   final TextEditingController _textController = TextEditingController();
 
-  // 1. 🔍 改為動態清單，不再寫死資料
   List<ArticleModel> _articles = [];
-  bool _isLoading = true; // 記錄是否正在從網路下載新聞
+  bool _isLoading = true; 
 
   @override
   void initState() {
     super.initState();
-    _fetchNews(); // 🚀 APP 一啟動，自動去抓衛福部最新消息
+    _fetchNews(); 
   }
 
   @override
@@ -44,21 +44,13 @@ class _MedNewsState extends State<MedNews> {
     super.dispose();
   }
 
-  // 2. 🌐 從衛福部抓取即時新聞的非同步函式
   Future<void> _fetchNews() async {
-    // 這裡以衛福部焦點新聞的 RSS 訂閱源為例
     const String rssUrl = 'https://www.mohw.gov.tw/rss-16-1.html';
-    
     try {
       final response = await http.get(Uri.parse(rssUrl));
-      
       if (response.statusCode == 200) {
-        // 解析從衛福部伺服器回傳的 XML 資料
         final feed = RssFeed.parse(response.body);
-        
         final List<ArticleModel> loadedArticles = [];
-        
-        // feed.items 裡面就是當下最新發布的所有新聞物件
         for (var item in feed.items ?? []) {
           loadedArticles.add(
             ArticleModel(
@@ -68,10 +60,9 @@ class _MedNewsState extends State<MedNews> {
             ),
           );
         }
-
         setState(() {
           _articles = loadedArticles;
-          _isLoading = false; // 載入完成
+          _isLoading = false; 
         });
       } else {
         throw Exception('無法連線至衛福部伺服器');
@@ -79,16 +70,60 @@ class _MedNewsState extends State<MedNews> {
     } catch (e) {
       print('抓取新聞失敗: $e');
       setState(() {
-        _isLoading = false; // 即使失敗也停止轉圈圈，可以顯示錯誤或留空
+        _isLoading = false; 
       });
     }
   }
 
-  // ... 您的 _initWebView 與 _buildAppBar 保持不變 ...
+  //初始化 WebView 並在網頁載入完畢時「自動獲取資訊」
   void _initWebView(String url) {
     _webViewController = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageFinished: (String url) async {
+            // 1. 當網頁完全載入後，透過 JS 抽取全網頁的純文字資訊
+            final dynamic rawText = await _webViewController?.runJavaScriptReturningResult(
+              "window.document.body.innerText;"
+            );
+
+            if (rawText != null) {
+              String pageText = rawText.toString();
+              
+              // 2. 清理部分平台 JS 回傳字串前後會自動包裹引號與換行符號的問題
+              pageText = pageText.replaceAll(r'\n', '\n').trim();
+              if (pageText.startsWith('"') && pageText.endsWith('"')) {
+                pageText = pageText.substring(1, pageText.length - 1);
+              }
+
+              // 3. 🚀 隨時獲取資訊：將網頁純文字丟給 AI 進行分析
+              _analyzeMedicalNewsWithAI(pageText);
+            }
+          },
+        ),
+      )
       ..loadRequest(Uri.parse(url));
+  }
+
+  // 🤖 呼叫您的 AI APP / API 處理分析與摘要
+  Future<void> _analyzeMedicalNewsWithAI(String webContent) async {
+    setState(() {
+      _isAiLoading = true;
+      _aiResponse = "AI 助理正在為您閱讀與分析網頁資訊，請稍候...";
+    });
+
+    try {
+      final response = await GPTService().getGPTResponse(webContent);
+      setState(() {
+        _aiResponse = response;
+        _isAiLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _aiResponse = "抱歉，AI 助理在分析網頁時發生錯誤，請重新點選試試。";
+        _isAiLoading = false;
+      });
+    }
   }
 
   PreferredSizeWidget _buildAppBar() {
@@ -110,6 +145,7 @@ class _MedNewsState extends State<MedNews> {
                 _selectedUrl = null;
                 _selectedTitle = null;
                 _webViewController = null;
+                _aiResponse = "您好！我是您的 AI 助理。已經為您準備好上方的醫療網頁，請問有什麼不明白的地方想諮詢嗎？";
               });
             },
           ),
@@ -127,7 +163,6 @@ class _MedNewsState extends State<MedNews> {
     );
   }
 
-  // 3. 🧩 修改初始佈局：如果還在下載，畫面中間顯示轉圈圈
   Widget _buildInitLayout() {
     return Column(
       children: [
@@ -151,17 +186,14 @@ class _MedNewsState extends State<MedNews> {
             ),
           ),
         ),
-        
-        // 下半部分：動態目錄清單
         Expanded(
           flex: 6,
           child: Container(
             color: Colors.white,
-            // 💡 如果還在下載，顯示進度條；下載好了就渲染最新的列表
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator()) 
                 : RefreshIndicator(
-                    onRefresh: _fetchNews, // 支援使用者「下拉更新」手勢
+                    onRefresh: _fetchNews, 
                     child: ListView.builder(
                       padding: const EdgeInsets.all(12),
                       itemCount: _articles.length,
@@ -175,7 +207,7 @@ class _MedNewsState extends State<MedNews> {
                             title: Text(
                               article.title, 
                               style: const TextStyle(fontWeight: FontWeight.bold),
-                              maxLines: 2,          // 限制標題最多兩行避免破版
+                              maxLines: 2,          
                               overflow: TextOverflow.ellipsis,
                             ),
                             subtitle: Text(
@@ -201,11 +233,12 @@ class _MedNewsState extends State<MedNews> {
       ],
     );
   }
-
-  // ... 您的 _buildSplitLayout 保持不變 ...
+String question="";
+  // 🧩 為您補全並優化的 _buildSplitLayout 佈局
   Widget _buildSplitLayout() {
     return Column(
       children: [
+        // 上半部：網頁顯示區
         Expanded(
           flex: 5,
           child: Container(
@@ -217,6 +250,7 @@ class _MedNewsState extends State<MedNews> {
                 : const Center(child: CircularProgressIndicator()),
           ),
         ),
+        // 下半部：AI 智慧助理對話/回應區
         Expanded(
           flex: 5,
           child: Container(
@@ -232,9 +266,18 @@ class _MedNewsState extends State<MedNews> {
                       decoration: BoxDecoration(color: Colors.blue[100], borderRadius: BorderRadius.circular(4)),
                       child: const Text('AI 智慧助理', style: TextStyle(color: Colors.blue, fontSize: 12, fontWeight: FontWeight.bold)),
                     ),
+                    const SizedBox(width: 8),
+                    // 如果 AI 正在載入，在標籤旁轉圈圈提示使用者
+                    if (_isAiLoading)
+                      const SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
                   ],
                 ),
                 const SizedBox(height: 8),
+                // AI 回應文字滾動區
                 Expanded(
                   child: SingleChildScrollView(
                     physics: const BouncingScrollPhysics(),
@@ -242,37 +285,47 @@ class _MedNewsState extends State<MedNews> {
                       width: double.infinity,
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(12)),
-                      child: Text(_aiResponse, style: const TextStyle(fontSize: 14, height: 1.4, color: Colors.black87)),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _textController,
-                        decoration: InputDecoration(
-                          hintText: _isAiLoading ? '思考中...' : '針對上方文章提問...',
-                          enabled: !_isAiLoading,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide(color: Colors.grey[300]!)),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      icon: _isAiLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.send, color: Colors.blue),
-                      onPressed: _isAiLoading ? null : () {}, // 配合原邏輯留空
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
+                      child: Text(
 
+_aiResponse,
+style: const TextStyle(fontSize: 14, height: 1.5, color: Colors.black87)
+),
+),
+),
+),
+const SizedBox(height: 8),
+
+Row(
+children: [
+Expanded(
+child: TextField(
+controller: _textController,
+decoration: InputDecoration(
+hintText: '輸入問題以諮詢此醫療新知...',
+isDense: true,
+contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+),
+),
+),
+const SizedBox(width: 8),
+IconButton(
+icon: const Icon(Icons.send, color: Colors.blue),
+onPressed: () {
+if (_textController.text.trim().isNotEmpty) {
+  question=_textController.text.trim();
+  _analyzeMedicalNewsWithAI(question);
+  _textController.clear();
+}
+},
+)
+],
+),
+],
+),
+),
+),
+],
+);
+}
+}
