@@ -31,7 +31,7 @@ class GPTService {
           'Authorization': 'Bearer $_apiKey',
         },
         body: jsonEncode({
-          'model': 'gpt-4o', // 使用當前穩定的主流模型
+          'model': 'gpt-4o',
           'messages': [
             {
               'role': 'system', 

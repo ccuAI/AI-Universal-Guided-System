@@ -1,15 +1,30 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'firstpage.dart';
 import 'secondpage.dart';
 import 'daily_med_news.dart';
 import 'hospital_helper.dart';
 import 'medicine_taker.dart';
-
-
-
+import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // 🌟 使用 try-catch 暴力捕捉，只要初始化過就直接忽略 duplicate-app 錯誤
+  try {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
+  } catch (e) {
+    if (e.toString().contains('duplicate-app')) {
+      debugPrint("Firebase 已在其他地方初始化，忽略此重複建立的錯誤。");
+    } else {
+      rethrow; // 如果是其他種類的 Firebase 錯誤則依然拋出
+    }
+  }
+  
   runApp(const MyApp());
 }
 
@@ -25,7 +40,6 @@ class MyApp extends StatelessWidget {
         primarySwatch: Colors.blue,
       ),
       home: const LongTermCareLoginScreen(),
-    
       routes: {
         'secondpage': (context) => const HomeScreen(),
         "firstpage": (context) => const LongTermCareLoginScreen(),
@@ -39,7 +53,3 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-
-
-
-

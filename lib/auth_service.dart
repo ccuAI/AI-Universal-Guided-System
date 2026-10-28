@@ -7,37 +7,22 @@ import 'package:flutter_line_sdk/flutter_line_sdk.dart' as line_sdk;
 class AuthService { 
   final FirebaseAuth _auth = FirebaseAuth.instance; 
   
-  // ✅ 修正 1：google_sign_in v7+ 改用 .instance，並加入初始化旗標
-  final GoogleSignIn _googleSignIn = GoogleSignIn.instance; 
-  bool _isGoogleInitialized = false;
-
-  // 輔助方法：確保 Google SDK 初始化完成
-  Future<void> _ensureGoogleInitialized() async {
-    if (!_isGoogleInitialized) {
-      await _googleSignIn.initialize();
-      _isGoogleInitialized = true;
-    }
-  }
+  // Use the GoogleSignIn API supported by the installed package version.
+  final GoogleSignIn _googleSignIn = GoogleSignIn(
+    scopes: ['email', 'openid', 'profile'],
+  );
 
   // ============================= 1. Google 登入 ============================= 
   Future<UserCredential?> signInWithGoogle() async { 
     try { 
-      await _ensureGoogleInitialized();
-
-      // ✅ 修正 2：v7+ 登入方法改為 .authenticate()
-      final googleUser = await _googleSignIn.authenticate(
-        scopeHint: ['email', 'openid', 'profile'],
-      ); 
+      final googleUser = await _googleSignIn.signIn();
+      if (googleUser == null) return null;
 // 使用者取消登入
 
-      // ✅ 修正 3：v7+ authentication 為同步屬性，移除 await
-      final googleAuth = googleUser.authentication; 
-
-      // ✅ 修正 4：v7+ 必須透過 authorizationClient 同步取得特定 Scopes 的授權資料以獲取 accessToken
-      final googleAuthorization = await googleUser.authorizationClient.authorizationForScopes(['email', 'openid', 'profile']);
+      final googleAuth = await googleUser.authentication;
       
       final String? idToken = googleAuth.idToken; 
-      final String? accessToken = googleAuthorization?.accessToken; // 從授權客戶端取得
+      final String? accessToken = googleAuth.accessToken;
       
       if (idToken == null) return null; 
 
@@ -99,7 +84,6 @@ class AuthService {
   // ==================== 登出功能 ==================== 
   Future<void> signOut() async { 
     await _auth.signOut(); 
-    await _ensureGoogleInitialized();
     await _googleSignIn.signOut(); 
     await facebook_auth.FacebookAuth.instance.logOut(); 
     try { 

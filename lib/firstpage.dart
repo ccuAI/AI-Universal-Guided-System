@@ -1,77 +1,153 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_line_sdk/flutter_line_sdk.dart'; // 1. 匯入 LINE SDK
+import 'package:google_sign_in/google_sign_in.dart'; // 2. 匯入 Google 登入 SDK
+import 'package:firebase_auth/firebase_auth.dart';
+
 
 class LongTermCareLoginScreen extends StatefulWidget {
   const LongTermCareLoginScreen({super.key});
+
 
   @override
   State<LongTermCareLoginScreen> createState() => _LongTermCareLoginScreenState();
 }
 
+
 class _LongTermCareLoginScreenState extends State<LongTermCareLoginScreen> {
   final TextEditingController _accountController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  bool _isSdkInitialized = false; // 追蹤 SDK 是否初始化成功
+ 
+  bool _isLineSdkInitialized = false; // 追蹤 LINE SDK 是否初始化成功
 
-  @override
-  void initState() {
-    super.initState();
-    _initLineSdk(); // 2. 在初始化時設定 LINE SDK
-  }
 
+  final GoogleSignIn _googleSignIn = GoogleSignIn(
+    serverClientId: '568574650772-5fm049p107851r9e84982pjatarufnkh.apps.googleusercontent.com',
+  );
+
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+
+@override
+void initState() {
+  super.initState();
+ 
+  _initLineSdk();
+}
+  // ==================== LINE SDK 初始化 ====================
   Future<void> _initLineSdk() async {
     try {
-      await LineSDK.instance.setup('YOUR_CHANNEL_ID'); 
+      // 請確保這裡填入的是您真實的 LINE Login Channel ID
+      await LineSDK.instance.setup('2012160109');
+      if (!mounted) return;
       setState(() {
-        _isSdkInitialized = true;
+        _isLineSdkInitialized = true;
       });
       print("LINE SDK 初始化成功");
-
-      // 💡 新增這行：這會讓 App 啟動時，直接在 debug 終端機印出當前正確的 Android Key Hash
-      await LineSDK.instance.currentAccessToken;
-      // 註：flutter_line_sdk 在特定 debug 模式或初始化錯誤時，會在原生的 log 中自動輸出當前應填寫的 Key Hash。
-      
     } catch (e) {
       print("LINE SDK 初始化失敗: $e");
     }
   }
 
 
-  // 實作 LINE 登入驗證邏輯
+  // ==================== LINE 登入邏輯 ====================
   Future<void> _loginWithLine() async {
-    if (!_isSdkInitialized) {
+    if (!_isLineSdkInitialized) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('LINE SDK 尚未準備就緒，請稍後再試')),
       );
       return;
     }
-
     try {
-      // 呼叫 LINE 登入，並要求權限：個人檔案 (profile)、OpenID (openid)、電子信箱 (email)
+      // 呼叫 LINE 登入，並要求權限：個人檔案 (profile)、OpenID (openid)
       final result = await LineSDK.instance.login(
-        scopes: ['profile', 'openid', 'email'],
+        scopes: ['profile', 'openid'],
       );
-
       // 登入驗證成功
       print("LINE 登入成功！");
       print("使用者姓名: ${result.userProfile?.displayName}");
       print("使用者 ID: ${result.userProfile?.userId}");
       print("Access Token: ${result.accessToken.value}");
 
-      if (mounted) {
-        // 驗證成功後跳轉至下一頁
-        Navigator.pushReplacementNamed(context, 'secondpage');
-      }
+
+      if (!mounted) return;
+      // 驗證成功後跳轉至下一頁
+      Navigator.pushReplacementNamed(context, 'secondpage');
+    } on PlatformException catch (e) {
+      print("LINE 登入失敗 (PlatformException): ${e.code} - ${e.message}");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('LINE 登入失敗: ${e.message ?? '未知錯誤'}')),
+      );
     } catch (e) {
-      // 使用者取消登入，或發生網路、平台憑證錯誤
-      print("LINE 登入失敗: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('LINE 登入失敗或已取消')),
-        );
-      }
+      print("其他登入失敗原因: $e");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('LINE 登入失敗或已取消')),
+      );
     }
   }
+
+
+  // ==================== ✨ 新增：Google 登入與 Firebase 綁定邏輯 ====================
+ Future<void> _loginWithGoogle() async {
+  try {
+    // 1. 觸發 Google 登入流程 (修正：改用標準的 signIn() 方法)
+    final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+   
+    // 檢查使用者是否取消了登入
+    if (googleUser == null) {
+      _showErrorSnackBar('使用者取消了 Google 登入');
+      return;
+    }
+
+
+    // 2. 取得 Google 認證詳細資料 (修正：authentication 是屬性，不需要加 await 和 ())
+    final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+   
+    // 3. 建立 Firebase 憑證
+    final AuthCredential credential = GoogleAuthProvider.credential(
+      idToken: googleAuth.idToken,
+      accessToken: googleAuth.accessToken,
+    );
+   
+    // 4. 登入 Firebase Auth
+    final UserCredential userCredential = await _auth.signInWithCredential(credential);
+    debugPrint('Google & Firebase 登入成功！使用者: ${userCredential.user?.displayName}');
+   
+    if (!mounted) return;
+   
+    // 5. 成功後安全跳轉
+    Navigator.pushReplacementNamed(context, 'secondpage');
+  } on PlatformException catch (e) {
+    print("Google 登入失敗 (PlatformException): ${e.code} - ${e.message}");
+    _showErrorSnackBar(e.message ?? '未知錯誤');
+  } catch (e) {
+    print("Google 登入其他錯誤: $e");
+    _showErrorSnackBar('登入過程中發生預期外錯誤');
+  }
+}
+
+
+
+
+
+
+  // 錯誤提示組件
+  void _showErrorSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Google 登入失敗: $message'),
+        duration: const Duration(seconds: 2),
+        backgroundColor: Colors.red,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10.0),
+        ),
+      ),
+    );
+  }
+
 
   @override
   void dispose() {
@@ -80,10 +156,11 @@ class _LongTermCareLoginScreenState extends State<LongTermCareLoginScreen> {
     super.dispose();
   }
 
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color.fromARGB(255, 144, 186, 219), 
+      backgroundColor: const Color.fromARGB(255, 144, 186, 219),
       body: SafeArea(
         child: Column(
           children: [
@@ -105,8 +182,7 @@ class _LongTermCareLoginScreenState extends State<LongTermCareLoginScreen> {
                   ),
                 ],
               ),
-            ), 
-
+            ),
             // 中間主要內容
             Expanded(
               child: Padding(
@@ -116,7 +192,7 @@ class _LongTermCareLoginScreenState extends State<LongTermCareLoginScreen> {
                   children: [
                     // 2. 主標題
                     const Text(
-                      '可視化長照Ai輔助系統',
+                      '可視化長照 Ai 輔助系統',
                       style: TextStyle(
                         fontSize: 32,
                         fontWeight: FontWeight.bold,
@@ -125,14 +201,12 @@ class _LongTermCareLoginScreenState extends State<LongTermCareLoginScreen> {
                       ),
                     ),
                     const SizedBox(height: 60),
-
                     // 3. 帳號輸入框
                     _buildCustomInputField(
                       controller: _accountController,
                       hintText: '請輸入帳號',
                     ),
                     const SizedBox(height: 30),
-
                     // 4. 密碼輸入框
                     _buildCustomInputField(
                       controller: _passwordController,
@@ -140,45 +214,27 @@ class _LongTermCareLoginScreenState extends State<LongTermCareLoginScreen> {
                       isObscure: true,
                     ),
                     const SizedBox(height: 80),
-
                     // 社群登入按鈕列
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
-                        // Google 登入按鈕
+                        // ✨ 修正：Google 登入按鈕（已綁定真實功能方法）
                         _buildSocialButton(
-                          label: Image.asset("web/icons/Google.png"),
+                          label: Image.asset("web/icons/Google.png", width: 32, height: 32),
                           color: const Color(0xFF4285F4),
-                          textColor: Colors.white,
-                          onTap: () async {
-                            Navigator.pushNamed(context, "secondpage");
-                          },
+                          onTap: _loginWithGoogle,
                         ),
-                        
-                        // LINE 登入按鈕（已串接真實登入驗證）
+                        // LINE 登入按鈕
                         _buildSocialButton(
-                          label: ClipOval(
-                            child: Image.asset(
-                              "web/icons/Line.png",
-                              fit: BoxFit.contain,
-                            ),
-                          ),
+                          label: Image.asset("web/icons/Line.png", width: 36, height: 36),
                           color: const Color(0xFF06C755),
-                          textColor: Colors.white,
-                          onTap: _loginWithLine, // 3. 綁定 LINE 登入方法
+                          onTap: _loginWithLine,
                         ),
-                        
-                        // Facebook 登入按鈕
+                        // Facebook 登入按鈕（目前維持原樣，保留跳轉）
                         _buildSocialButton(
-                          label: ClipOval(
-                            child: Image.asset(
-                              "web/icons/Facebook.png",
-                              fit: BoxFit.contain,
-                            ),
-                          ),
+                          label: Image.asset("web/icons/Facebook.png", width: 36, height: 36),
                           color: const Color.fromARGB(255, 110, 126, 147),
-                          textColor: Colors.white,
-                          onTap: () async {
+                          onTap: () {
                             Navigator.pushNamed(context, "secondpage");
                           },
                         ),
@@ -193,6 +249,7 @@ class _LongTermCareLoginScreenState extends State<LongTermCareLoginScreen> {
       ),
     );
   }
+
 
   // 自訂輸入框組件
   Widget _buildCustomInputField({
@@ -210,7 +267,7 @@ class _LongTermCareLoginScreenState extends State<LongTermCareLoginScreen> {
               borderRadius: BorderRadius.circular(30),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
+                  color: Colors.black.withOpacity(0.05),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),
@@ -233,6 +290,7 @@ class _LongTermCareLoginScreenState extends State<LongTermCareLoginScreen> {
         GestureDetector(
           onTap: () {
             print('點擊右側按鈕，當前輸入內容: ${controller.text}');
+            // TODO: 您可以在此處呼叫傳統的 Firebase Auth 帳密登入方法
             controller.clear();
           },
           child: Container(
@@ -252,25 +310,37 @@ class _LongTermCareLoginScreenState extends State<LongTermCareLoginScreen> {
     );
   }
 
-  // 社群登入按鈕組件（將多餘未定義的參數簡化）
+
+  // 社群登入按鈕組件
   Widget _buildSocialButton({
     required Widget label,
     required Color color,
-    required Color textColor,
     required VoidCallback onTap,
   }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 50,
-        height: 50,
-        padding: const EdgeInsets.all(8),
+        width: 60,
+        height: 60,
         decoration: BoxDecoration(
           color: color,
           shape: BoxShape.circle,
-        ),
-        child: label,
-      ),
-    );
-  }
+boxShadow: [
+BoxShadow(
+color: Colors.black.withOpacity(0.15),
+blurRadius: 8,
+offset: const Offset(0, 4),
+),
+],
+),
+child: Center(
+child: label,
+),
+),
+);
 }
+}
+
+
+
+

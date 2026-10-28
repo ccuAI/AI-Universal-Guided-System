@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // 引入套件
+import 'scroll_bar_medtaker.dart' as medtaker;
 import 'dart:io';
 
 class MedicineTakerPage extends StatefulWidget {
@@ -10,41 +12,67 @@ class MedicineTakerPage extends StatefulWidget {
 }
 
 class _MedicineTakerPageState extends State<MedicineTakerPage> {
-  // 宣告儲存照片的變數
   File? _scannedImage;
   final ImagePicker _picker = ImagePicker();
-  bool _isLoading = false; // 用於辨識中的載入動畫
+  bool _isLoading = false; 
+  int ltemcount = 0; // 本地暫存的數量
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData(); // App 一開啟時，立刻從手機本地硬碟讀取舊資料
+  }
+
+
+  Future<void> _loadData() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      // 讀取儲存的數量，若沒有紀錄過則預設為 0
+      ltemcount = prefs.getInt('medicine_count') ?? 0;
+      
+      // 讀取儲存的照片路徑
+      String? imagePath = prefs.getString('scanned_image_path');
+      if (imagePath != null && imagePath.isNotEmpty) {
+        _scannedImage = File(imagePath);
+      }
+    });
+  }
+
+  //  儲存資料到本地的方法
+  Future<void> _saveData() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('medicine_count', ltemcount); // 儲存數量
+    await prefs.setString('scanned_image_path', _scannedImage?.path ?? ''); // 儲存照片路徑
+  }
 
   // 拍照辨識藥袋的方法
   Future<void> _takeMedicinePhoto() async {
     try {
-      // 呼叫系統相機拍照
       final XFile? photo = await _picker.pickImage(
-        source: ImageSource.camera,// 從相簿選取照片final XFile? photo = await _picker.pickImage(source: ImageSource.gallery);
-        maxWidth: 1800, // 限制最大寬度，避免照片過大導致辨識變慢
+        source: ImageSource.camera,
+        maxWidth: 1800, 
         maxHeight: 1800,
-        imageQuality: 85,
-         // 微幅壓縮提升傳輸效率
+        imageQuality: 85, 
       );
 
       if (photo != null) {
         setState(() {
           _scannedImage = File(photo.path);
-          _isLoading = true; // 開啟辨識中動畫
+          _isLoading = true; 
         });
 
-        // TODO: 這裡實作你的藥袋辨識邏輯（例如送至後端 API 或 OCR 套件）
-        // 模擬辨識耗時 2 秒
         await Future.delayed(const Duration(seconds: 2));
 
-        setState(() {
-          _isLoading = false; // 辨識完成，關閉動畫
-        });
-
-        // 提示使用者拍照成功（測試用）
         if (mounted) {
+          setState(() {
+            _isLoading = false; 
+            ltemcount++; // 數量加 1
+          });
+
+          await _saveData(); // 關鍵：狀態更新後，立刻同步儲存到手機本地空間！
+
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('藥袋照片選取成功！路徑: ${photo.path}')),
+            SnackBar(content: Text('藥袋照片選取成功並已儲存！')),
           );
         }
       }
@@ -52,7 +80,7 @@ class _MedicineTakerPageState extends State<MedicineTakerPage> {
       debugPrint('拍照發生錯誤: $e');
     }
   }
-
+  
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -65,19 +93,12 @@ class _MedicineTakerPageState extends State<MedicineTakerPage> {
               padding: EdgeInsets.symmetric(vertical: 24.0),
               child: Text(
                 '吃藥小助手',
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black,
-                  letterSpacing: 2.0,
-                ),
+                style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, letterSpacing: 2.0),
               ),
             ),
-            
-            // 分隔線
             const Divider(height: 1, thickness: 1, color: Colors.black26),
             
-            // 中間主要內容：時間列表與照片預覽
+            // 中間主要內容
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
@@ -91,35 +112,27 @@ class _MedicineTakerPageState extends State<MedicineTakerPage> {
                           SizedBox(height: 16),
                           Text('正在辨識藥袋中...', style: TextStyle(fontSize: 16)),
                         ],
-                      )
-                    else if (_scannedImage != null)
-                      // 拍照後顯示剛剛拍完的藥袋照片預覽
-                      Expanded(
-                        child: Column(
-                          children: [
-                            const Text('已拍攝的藥袋：', style: TextStyle(fontWeight: FontWeight.bold)),
-                            const SizedBox(height: 8),
-                            Expanded(child: Image.file(_scannedImage!)),
-                          ],
-                        ),
-                      )
-                    else
-                      // 原本的時間列表預留區
-                      const Expanded(
-                        child: Center(
-                          child: Text(
-                            '目前沒有處方資料\n請點擊下方「+」拍照辨識藥袋',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: Colors.black45, fontSize: 16),
-                          ),
-                        ),
                       ),
+                    
+                    if (!_isLoading)
+                      _scannedImage == null
+                          ? const Expanded(
+                              child: Center(
+                                child: Text(
+                                  '目前沒有處方資料\n請點擊下方「+」拍照辨識藥袋',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: Colors.black45, fontSize: 16),
+                                ),
+                              ),
+                            )
+                          : Expanded(
+                              child: medtaker.listForMedicine(ltemcount, _scannedImage?.path),
+                            ),
                   ],
                 ),
               ),
             ),
             
-            // 底部診所切換欄與功能按鈕
             const Divider(height: 1, thickness: 1, color: Colors.black26),
             _buildBottomSection(),
           ],
@@ -128,37 +141,21 @@ class _MedicineTakerPageState extends State<MedicineTakerPage> {
     );
   }
 
-  // 封裝底部導覽與功能區塊
   Widget _buildBottomSection() {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // 診所處方切換列
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new, size: 36, color: Color(0xFF9AD1F8)),
-                onPressed: () {},
-              ),
-              const Text(
-                'XX診所處方',
-                style: TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black,
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.arrow_forward_ios, size: 36, color: Color(0xFF9AD1F8)),
-                onPressed: () {},
-              ),
+              IconButton(icon: const Icon(Icons.arrow_back_ios_new, size: 36, color: Color(0xFF9AD1F8)), onPressed: () {}),
+              const Text('XX診所處方', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
+              IconButton(icon: const Icon(Icons.arrow_forward_ios, size: 36, color: Color(0xFF9AD1F8)), onPressed: () {}),
             ],
           ),
           const SizedBox(height: 8),
-          // 拍照辨識藥袋按鈕
           Align(
             alignment: Alignment.centerRight,
             child: Padding(
@@ -166,25 +163,15 @@ class _MedicineTakerPageState extends State<MedicineTakerPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  const Text(
-                    '拍照辨識藥袋',
-                    style: TextStyle(fontSize: 14, color: Colors.black87, fontWeight: FontWeight.w500),
-                  ),
+                  const Text('拍照辨識藥袋', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                   const SizedBox(height: 4),
                   InkWell(
-                    onTap: _takeMedicinePhoto, // 綁定拍照點擊事件
+                    onTap: _takeMedicinePhoto,
                     borderRadius: BorderRadius.circular(24),
                     child: Container(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.black87, width: 2),
-                      ),
+                      decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.black87, width: 2)),
                       padding: const EdgeInsets.all(4),
-                      child: const Icon(
-                        Icons.add,
-                        size: 32,
-                        color: Colors.black87,
-                      ),
+                      child: const Icon(Icons.add, size: 32, color: Colors.black87),
                     ),
                   ),
                 ],
