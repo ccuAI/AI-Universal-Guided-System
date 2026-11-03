@@ -46,3 +46,5 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+# 環境變數私密金鑰（手動加上這行）
+.env

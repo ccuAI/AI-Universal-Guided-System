@@ -48,3 +48,5 @@ flutter:
     - "web/icons/Line.png"
     - "web/icons/Facebook.png"
     - .env
+    - "web/icons/37810-removebg-preview.png"
+    - "web/icons/37812-removebg-preview.png"

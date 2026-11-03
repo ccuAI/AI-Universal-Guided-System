@@ -1,56 +1,49 @@
+import 'dart:math' as math;
+
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_line_sdk/flutter_line_sdk.dart'; // 1. 匯入 LINE SDK
-import 'package:google_sign_in/google_sign_in.dart'; // 2. 匯入 Google 登入 SDK
-import 'package:firebase_auth/firebase_auth.dart';
-
+import 'package:flutter_line_sdk/flutter_line_sdk.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 class LongTermCareLoginScreen extends StatefulWidget {
   const LongTermCareLoginScreen({super.key});
 
-
   @override
-  State<LongTermCareLoginScreen> createState() => _LongTermCareLoginScreenState();
+  State<LongTermCareLoginScreen> createState() =>
+      _LongTermCareLoginScreenState();
 }
-
 
 class _LongTermCareLoginScreenState extends State<LongTermCareLoginScreen> {
   final TextEditingController _accountController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
- 
-  bool _isLineSdkInitialized = false; // 追蹤 LINE SDK 是否初始化成功
 
+  bool _isLineSdkInitialized = false;
 
+  // 沿用原專案的 Google Sign-In 6.x 寫法；若使用 7.x 須另外遷移 API。
   final GoogleSignIn _googleSignIn = GoogleSignIn(
-    serverClientId: '568574650772-5fm049p107851r9e84982pjatarufnkh.apps.googleusercontent.com',
+    serverClientId:
+        '568574650772-5fm049p107851r9e84982pjatarufnkh.apps.googleusercontent.com',
   );
-
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
+  @override
+  void initState() {
+    super.initState();
+    _initLineSdk();
+  }
 
-@override
-void initState() {
-  super.initState();
- 
-  _initLineSdk();
-}
-  // ==================== LINE SDK 初始化 ====================
   Future<void> _initLineSdk() async {
     try {
-      // 請確保這裡填入的是您真實的 LINE Login Channel ID
-      await LineSDK.instance.setup('2012160109');
+      await LineSDK.instance.setup('2012349789');
       if (!mounted) return;
-      setState(() {
-        _isLineSdkInitialized = true;
-      });
-      print("LINE SDK 初始化成功");
+      setState(() => _isLineSdkInitialized = true);
+      debugPrint('LINE SDK 初始化成功');
     } catch (e) {
-      print("LINE SDK 初始化失敗: $e");
+      debugPrint('LINE SDK 初始化失敗: $e');
     }
   }
 
-
-  // ==================== LINE 登入邏輯 ====================
   Future<void> _loginWithLine() async {
     if (!_isLineSdkInitialized) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -59,28 +52,18 @@ void initState() {
       return;
     }
     try {
-      // 呼叫 LINE 登入，並要求權限：個人檔案 (profile)、OpenID (openid)
-      final result = await LineSDK.instance.login(
-        scopes: ['profile', 'openid'],
-      );
-      // 登入驗證成功
-      print("LINE 登入成功！");
-      print("使用者姓名: ${result.userProfile?.displayName}");
-      print("使用者 ID: ${result.userProfile?.userId}");
-      print("Access Token: ${result.accessToken.value}");
-
-
+      await LineSDK.instance.login(scopes: ['profile', 'openid']);
+      // 不記錄 access token 等敏感資訊。
       if (!mounted) return;
-      // 驗證成功後跳轉至下一頁
       Navigator.pushReplacementNamed(context, 'secondpage');
     } on PlatformException catch (e) {
-      print("LINE 登入失敗 (PlatformException): ${e.code} - ${e.message}");
+      debugPrint('LINE 登入失敗: ${e.code} - ${e.message}');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('LINE 登入失敗: ${e.message ?? '未知錯誤'}')),
       );
     } catch (e) {
-      print("其他登入失敗原因: $e");
+      debugPrint('LINE 登入失敗或取消: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('LINE 登入失敗或已取消')),
@@ -88,66 +71,46 @@ void initState() {
     }
   }
 
+  Future<void> _loginWithGoogle() async {
+    try {
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+      if (googleUser == null) {
+        _showErrorSnackBar('使用者取消了 Google 登入');
+        return;
+      }
 
-  // ==================== ✨ 新增：Google 登入與 Firebase 綁定邏輯 ====================
- Future<void> _loginWithGoogle() async {
-  try {
-    // 1. 觸發 Google 登入流程 (修正：改用標準的 signIn() 方法)
-    final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-   
-    // 檢查使用者是否取消了登入
-    if (googleUser == null) {
-      _showErrorSnackBar('使用者取消了 Google 登入');
-      return;
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
+      final AuthCredential credential = GoogleAuthProvider.credential(
+        idToken: googleAuth.idToken,
+        accessToken: googleAuth.accessToken,
+      );
+      await _auth.signInWithCredential(credential);
+
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(context, 'secondpage');
+    } on PlatformException catch (e) {
+      debugPrint('Google 登入失敗: ${e.code} - ${e.message}');
+      _showErrorSnackBar(e.message ?? '未知錯誤');
+    } catch (e) {
+      debugPrint('Google 登入發生錯誤: $e');
+      _showErrorSnackBar('登入過程中發生預期外錯誤');
     }
-
-
-    // 2. 取得 Google 認證詳細資料 (修正：authentication 是屬性，不需要加 await 和 ())
-    final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-   
-    // 3. 建立 Firebase 憑證
-    final AuthCredential credential = GoogleAuthProvider.credential(
-      idToken: googleAuth.idToken,
-      accessToken: googleAuth.accessToken,
-    );
-   
-    // 4. 登入 Firebase Auth
-    final UserCredential userCredential = await _auth.signInWithCredential(credential);
-    debugPrint('Google & Firebase 登入成功！使用者: ${userCredential.user?.displayName}');
-   
-    if (!mounted) return;
-   
-    // 5. 成功後安全跳轉
-    Navigator.pushReplacementNamed(context, 'secondpage');
-  } on PlatformException catch (e) {
-    print("Google 登入失敗 (PlatformException): ${e.code} - ${e.message}");
-    _showErrorSnackBar(e.message ?? '未知錯誤');
-  } catch (e) {
-    print("Google 登入其他錯誤: $e");
-    _showErrorSnackBar('登入過程中發生預期外錯誤');
   }
-}
 
-
-
-
-
-
-  // 錯誤提示組件
   void _showErrorSnackBar(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Google 登入失敗: $message'),
+        content: Text('Google 登入：$message'),
         duration: const Duration(seconds: 2),
         backgroundColor: Colors.red,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10.0),
+          borderRadius: BorderRadius.circular(10),
         ),
       ),
     );
   }
-
 
   @override
   void dispose() {
@@ -156,92 +119,144 @@ void initState() {
     super.dispose();
   }
 
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color.fromARGB(255, 144, 186, 219),
+      // 鍵盤彈出時縮小內容區，再由 SingleChildScrollView 提供捲動。
+      resizeToAvoidBottomInset: true,
       body: SafeArea(
         child: Column(
           children: [
-            // 1. 頂部衛福部 Header 區塊
-            Container(
-              color: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 200,
-                    height: 60,
-                    child: Center(
-                      child: Image.asset(
-                        "web/icons/779240515145235692.png",
-                        fit: BoxFit.contain,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // 中間主要內容
+            _buildHeader(),
             Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 40.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // 2. 主標題
-                    const Text(
-                      '可視化長照 Ai 輔助系統',
-                      style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                        letterSpacing: 1.5,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final width = constraints.maxWidth;
+                  final compactWidth = width < 600;
+                  final compactHeight = constraints.maxHeight < 550;
+                  final sidePadding = width < 360 ? 16.0 : 24.0;
+                  final titleSize = width < 360
+                      ? 23.0
+                      : compactWidth
+                          ? 27.0
+                          : 32.0;
+
+                  return SingleChildScrollView(
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    child: ConstrainedBox(
+                      // 螢幕高時內容垂直置中；螢幕矮或鍵盤彈出時可滾動。
+                      constraints: BoxConstraints(
+                        minHeight: constraints.maxHeight,
+                      ),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 520),
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: sidePadding,
+                              vertical: compactHeight ? 24 : 44,
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '可視化長照 AI 輔助系統',
+                                  textAlign: TextAlign.center,
+                                  softWrap: true,
+                                  style: TextStyle(
+                                    fontSize: titleSize,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black87,
+                                    letterSpacing: compactWidth ? 0.5 : 1.5,
+                                  ),
+                                ),
+                                SizedBox(height: compactHeight ? 28 : 52),
+                                _buildCustomInputField(
+                                  controller: _accountController,
+                                  hintText: '請輸入帳號',
+                                  compact: compactWidth,
+                                ),
+                                SizedBox(height: compactHeight ? 18 : 26),
+                                _buildCustomInputField(
+                                  controller: _passwordController,
+                                  hintText: '請輸入密碼',
+                                  isObscure: true,
+                                  compact: compactWidth,
+                                ),
+                                SizedBox(height: compactHeight ? 32 : 60),
+                                // 手機、平板與桌面皆維持三顆按鈕並排。
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceEvenly,
+                                  children: [
+                                    _buildSocialButton(
+                                      semanticLabel: '使用 Google 登入',
+                                      size: compactWidth ? 54 : 60,
+                                      label: Image.asset(
+                                        'web/icons/google.png',
+                                        width: 32,
+                                        height: 32,
+                                        fit: BoxFit.contain,
+                                        errorBuilder: (_, __, ___) =>
+                                            const Icon(Icons.g_mobiledata,
+                                                color: Colors.white),
+                                      ),
+                                      color: const Color(0xFF4285F4),
+                                      onTap: _loginWithGoogle,
+                                    ),
+                                    _buildSocialButton(
+                                      semanticLabel: '使用 LINE 登入',
+                                      size: compactWidth ? 54 : 60,
+                                      label: Image.asset(
+                                        'web/icons/Line.png',
+                                        width: 36,
+                                        height: 36,
+                                        fit: BoxFit.contain,
+                                        errorBuilder: (_, __, ___) =>
+                                            const Text('LINE',
+                                                style: TextStyle(
+                                                    color: Colors.white,
+                                                    fontWeight:
+                                                        FontWeight.bold)),
+                                      ),
+                                      color: const Color(0xFF06C755),
+                                      onTap: _loginWithLine,
+                                    ),
+                                    _buildSocialButton(
+                                      semanticLabel: 'Facebook（目前僅頁面跳轉）',
+                                      size: compactWidth ? 54 : 60,
+                                      label: Image.asset(
+                                        'web/icons/Facebook.png',
+                                        width: 36,
+                                        height: 36,
+                                        fit: BoxFit.contain,
+                                        errorBuilder: (_, __, ___) =>
+                                            const Text('f',
+                                                style: TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 28,
+                                                    fontWeight:
+                                                        FontWeight.bold)),
+                                      ),
+                                      color: const Color.fromARGB(
+                                          255, 110, 126, 147),
+                                      onTap: () => Navigator.pushNamed(
+                                        context,
+                                        'secondpage',
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 60),
-                    // 3. 帳號輸入框
-                    _buildCustomInputField(
-                      controller: _accountController,
-                      hintText: '請輸入帳號',
-                    ),
-                    const SizedBox(height: 30),
-                    // 4. 密碼輸入框
-                    _buildCustomInputField(
-                      controller: _passwordController,
-                      hintText: '請輸入密碼',
-                      isObscure: true,
-                    ),
-                    const SizedBox(height: 80),
-                    // 社群登入按鈕列
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        // ✨ 修正：Google 登入按鈕（已綁定真實功能方法）
-                        _buildSocialButton(
-                          label: Image.asset("web/icons/Google.png", width: 32, height: 32),
-                          color: const Color(0xFF4285F4),
-                          onTap: _loginWithGoogle,
-                        ),
-                        // LINE 登入按鈕
-                        _buildSocialButton(
-                          label: Image.asset("web/icons/Line.png", width: 36, height: 36),
-                          color: const Color(0xFF06C755),
-                          onTap: _loginWithLine,
-                        ),
-                        // Facebook 登入按鈕（目前維持原樣，保留跳轉）
-                        _buildSocialButton(
-                          label: Image.asset("web/icons/Facebook.png", width: 36, height: 36),
-                          color: const Color.fromARGB(255, 110, 126, 147),
-                          onTap: () {
-                            Navigator.pushNamed(context, "secondpage");
-                          },
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                  );
+                },
               ),
             ),
           ],
@@ -250,59 +265,99 @@ void initState() {
     );
   }
 
+  Widget _buildHeader() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final logoWidth = math.max(
+          0.0,
+          math.min(200.0, constraints.maxWidth - 32.0),
+        );
+        return Container(
+          width: double.infinity,
+          color: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          alignment: Alignment.centerLeft,
+          child: SizedBox(
+            width: logoWidth,
+            height: 56,
+            child: Image.asset(
+              'web/icons/779240515145235692.png',
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => const Align(
+                alignment: Alignment.centerLeft,
+                child: Text('長照輔助系統'),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 
-  // 自訂輸入框組件
   Widget _buildCustomInputField({
     required TextEditingController controller,
     required String hintText,
+    required bool compact,
     bool isObscure = false,
   }) {
+    final height = compact ? 54.0 : 60.0;
+    final arrowSize = compact ? 50.0 : 60.0;
+
     return Row(
       children: [
         Expanded(
           child: Container(
-            height: 60,
+            height: height,
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(30),
+              borderRadius: BorderRadius.circular(height / 2),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
+                  color: Colors.black.withValues(alpha: 0.05),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),
               ],
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 24),
+            padding: EdgeInsets.symmetric(horizontal: compact ? 18 : 24),
             alignment: Alignment.center,
             child: TextField(
               controller: controller,
               obscureText: isObscure,
+              textInputAction: isObscure
+                  ? TextInputAction.done
+                  : TextInputAction.next,
               decoration: InputDecoration(
                 hintText: hintText,
                 border: InputBorder.none,
+                isDense: true,
                 hintStyle: TextStyle(color: Colors.grey[400]),
               ),
             ),
           ),
         ),
-        const SizedBox(width: 16),
-        GestureDetector(
-          onTap: () {
-            print('點擊右側按鈕，當前輸入內容: ${controller.text}');
-            // TODO: 您可以在此處呼叫傳統的 Firebase Auth 帳密登入方法
-            controller.clear();
-          },
-          child: Container(
-            width: 60,
-            height: 60,
-            decoration: const BoxDecoration(
-              color: Colors.black,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.arrow_forward_rounded,
-              color: Colors.white,
+        SizedBox(width: compact ? 10 : 16),
+        Semantics(
+          button: true,
+          label: '清除此欄位文字',
+          child: InkWell(
+            borderRadius: BorderRadius.circular(arrowSize / 2),
+            onTap: () {
+              // 沿用原程式的清空欄位行為，不再印出帳號或密碼。
+              // TODO: 若要執行帳密登入，請在此串接正式驗證流程。
+              controller.clear();
+            },
+            child: Container(
+              width: arrowSize,
+              height: arrowSize,
+              decoration: const BoxDecoration(
+                color: Colors.black,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.arrow_forward_rounded,
+                color: Colors.white,
+              ),
             ),
           ),
         ),
@@ -310,37 +365,36 @@ void initState() {
     );
   }
 
-
-  // 社群登入按鈕組件
   Widget _buildSocialButton({
+    required String semanticLabel,
+    required double size,
     required Widget label,
     required Color color,
     required VoidCallback onTap,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 60,
-        height: 60,
-        decoration: BoxDecoration(
-          color: color,
-          shape: BoxShape.circle,
-boxShadow: [
-BoxShadow(
-color: Colors.black.withOpacity(0.15),
-blurRadius: 8,
-offset: const Offset(0, 4),
-),
-],
-),
-child: Center(
-child: label,
-),
-),
-);
+    return Semantics(
+      button: true,
+      label: semanticLabel,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(size / 2),
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.15),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Center(child: label),
+        ),
+      ),
+    );
+  }
 }
-}
-
-
-
-

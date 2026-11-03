@@ -1,22 +1,37 @@
+
 import java.io.FileInputStream
 import java.util.Properties
 
 plugins {
     id("com.android.application")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
-    id("dev.flutter.flutter-gradle-plugin")
     id("org.jetbrains.kotlin.android")
+    id("dev.flutter.flutter-gradle-plugin")
     id("com.google.gms.google-services")
 }
 
+// 讀取 APK 簽署設定
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
+
 if (keystorePropertiesFile.exists()) {
-    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+    FileInputStream(keystorePropertiesFile).use {
+        keystoreProperties.load(it)
+    }
+}
+
+// 檢查正式版簽署資料是否完整
+val hasReleaseKey = listOf(
+    "keyAlias",
+    "keyPassword",
+    "storeFile",
+    "storePassword"
+).all {
+    !keystoreProperties.getProperty(it).isNullOrBlank()
 }
 
 android {
     namespace = "com.med.myproject"
+
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -26,47 +41,63 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.med.myproject"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+
+        // 保留 LINE SDK 所需的最低 Android 版本設定
+        minSdk = 24
+
+        // 修正 Flutter SDK 屬性
         targetSdk = flutter.targetSdkVersion
+
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-         multiDexEnabled = true
+
+        multiDexEnabled = true
     }
 
     signingConfigs {
-        create("release") {
-            keyAlias = keystoreProperties["keyAlias"] as String? ?: ""
-            keyPassword = keystoreProperties["keyPassword"] as String? ?: ""
-            storeFile = keystoreProperties["storeFile"]?.let { file(it as String) }
-            storePassword = keystoreProperties["storePassword"] as String? ?: ""
+        if (hasReleaseKey) {
+            create("release") {
+                keyAlias =
+                    keystoreProperties["keyAlias"] as String
+                keyPassword =
+                    keystoreProperties["keyPassword"] as String
+                storeFile = file(
+                    keystoreProperties["storeFile"] as String
+                )
+                storePassword =
+                    keystoreProperties["storePassword"] as String
+            }
         }
     }
 
     buildTypes {
-        release {
-            signingConfig = if (keystorePropertiesFile.exists()) {
+        getByName("release") {
+            signingConfig = if (hasReleaseKey) {
                 signingConfigs.getByName("release")
             } else {
+                // 僅供本機測試
                 signingConfigs.getByName("debug")
             }
         }
-        debug {
-            signingConfig = signingConfigs.getByName("debug")
+
+        getByName("debug") {
+            signingConfig =
+                signingConfigs.getByName("debug")
         }
     }
 }
 
+// Kotlin JVM 版本
 kotlin {
     compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        jvmTarget.set(
+            org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+        )
     }
 }
-
 
 flutter {
     source = "../.."
 }
+
