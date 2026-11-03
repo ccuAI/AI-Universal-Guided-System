@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
-        <!-- 真機必須的相機與相簿存取權限 -->
+    <!-- 真機必須的相機與相簿存取權限 -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
@@ -12,7 +12,9 @@
         android:label="projectfront"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
-                <activity
+        
+        <!-- ==================== 主 MainActivity 開始 ==================== -->
+        <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
@@ -22,19 +24,21 @@
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
             
-            <!-- 1. 這是原本維持不變的：主 App 啟動意圖過濾器（獨立一個區塊） -->
+            <!-- Meta 必要的設定（必須保留在主要啟動的 MainActivity 內） -->
+            <meta-data android:name="com.facebook.sdk.ApplicationId" android:value="@string/facebook_app_id"/>
+            <meta-data android:name="com.facebook.sdk.ClientToken" android:value="@string/facebook_client_token"/>
+
+            <!-- 1. 原本維持不變的：主 App 啟動意圖過濾器 -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
 
-           
+            <!-- LINE 登入或分享用的意圖過濾器 -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                
-               
                 <data android:scheme="line3rdp.2012160109" />
             </intent-filter>
             
@@ -42,6 +46,27 @@
                 android:name="io.flutter.embedding.android.ImpellerBackend"
                 android:value="false" />
         </activity>
+        <!-- ==================== 主 MainActivity 結束 ==================== -->
+
+
+        <!-- ==================== Facebook SDK 獨立 Activity 區塊 (已移出嵌套) ==================== -->
+        <activity 
+            android:name="com.facebook.FacebookActivity"
+            android:configChanges="keyboard|keyboardHidden|screenLayout|screenSize|orientation"
+            android:label="@string/app_name" />
+            
+        <activity
+            android:name="com.facebook.CustomTabActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="@string/fb_login_protocol_scheme" />
+            </intent-filter>
+        </activity>
+        <!-- =================================================================================== -->
+
 
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
@@ -49,15 +74,16 @@
             android:name="flutterEmbedding"
             android:value="2" />
     </application>
-    <!-- Required to query activities that can process text, see:
-         https://developer.android.com/training/package-visibility and
-         https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.
 
-         In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
+    <!-- 補上 Android 11+ 必備的套件查詢宣告，確保能與真機的 App 順利互動 -->
     <queries>
+        <!-- 原本 Flutter 引擎自帶的文字處理查詢 -->
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- Meta/Facebook 登入與分享所需的應用程式查詢宣告 -->
+        <package android:name="com.facebook.katana" />
+        <package android:name="com.facebook.orca" />
     </queries>
 </manifest>

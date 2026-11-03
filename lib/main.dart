@@ -9,7 +9,6 @@ import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // 🌟 使用 try-catch 暴力捕捉，只要初始化過就直接忽略 duplicate-app 錯誤
   try {
     if (Firebase.apps.isEmpty) {
       await Firebase.initializeApp(

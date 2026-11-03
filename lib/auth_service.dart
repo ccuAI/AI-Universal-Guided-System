@@ -48,9 +48,9 @@ class AuthService {
       ); 
 
       if (result.status == facebook_auth.LoginStatus.success && result.accessToken != null) { 
-        // ✅ 修正 5：FacebookAuthProvider 屬於 firebase_auth，移除 facebook_auth. 前綴
+     
         final AuthCredential credential = FacebookAuthProvider.credential( 
-          result.accessToken!.tokenString, 
+          result.accessToken!.token,
         ); 
 
         return await _auth.signInWithCredential(credential); 

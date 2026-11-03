@@ -2,33 +2,33 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
+class ApiConfig {
+
+  static String get gptApiKey => dotenv.env['GPT_API_KEY'] ?? '';
+}
+
 class GPTService {  
   // 基礎網址與端點設定
   static const String _baseUrl = 'https://api.openai.com/v1';
   static const String _chatEndpoint = '$_baseUrl/chat/completions';
 
-  // 優先從 .env 讀取，若無則嘗試從環境編譯參數讀取
-  String get _apiKey {
-    return dotenv.env['OPENAI_API_KEY'] ?? const String.fromEnvironment('OPENAI_API_KEY');
-  }
-
   /// 呼叫 GPT 進行醫療新知分析與摘要
   Future<String> getGPTResponse(String userMessage) async {
     try {
-      // 確保 dotenv 已載入（防呆機制，若在 main.dart 已載入可省略此行）
+      // 防呆機制：確保 dotenv 已載入
       if (!dotenv.isInitialized) {
         await dotenv.load(fileName: ".env");
       }
 
-      if (_apiKey.isEmpty) {
-        return '錯誤: 找不到 API 金鑰，請確認 .env 或環境變數設定。';
+      if (ApiConfig.gptApiKey.isEmpty) {
+        return '錯誤: 找不到 API 金鑰，請確認專案根目錄下的 .env 檔案中是否已設定 GPT_API_KEY。';
       }
 
       final response = await http.post(
         Uri.parse(_chatEndpoint),
         headers: {
           'Content-Type': 'application/json; charset=utf-8',
-          'Authorization': 'Bearer $_apiKey',
+          'Authorization': 'Bearer ${ApiConfig.gptApiKey}',
         },
         body: jsonEncode({
           'model': 'gpt-4o',
@@ -39,7 +39,7 @@ class GPTService {
             },
             {'role': 'user', 'content': userMessage}
           ],
-          'temperature': 0.5, // 調低隨機性，使醫療摘要更嚴謹穩定
+          'temperature': 0.5,
         }),
       );
 

@@ -222,10 +222,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                     MainAxisAlignment.center,
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(
-                                    Icons.smart_toy,
-                                    color: const Color(0xFF66BB6A),
-                                    size: iconSize * 0.34,
+                                  Image.asset(
+                                    "web/icons/37821-removebg-preview.png",
+                                    width: iconSize * 0.6 ,
+                                    height: iconSize * 0.6,
                                   ),
                                   const SizedBox(height: 4),
                                   Text(

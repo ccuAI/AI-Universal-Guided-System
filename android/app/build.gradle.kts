@@ -1,4 +1,3 @@
-
 import java.io.FileInputStream
 import java.util.Properties
 
@@ -30,6 +29,7 @@ val hasReleaseKey = listOf(
 }
 
 android {
+    
     namespace = "com.med.myproject"
 
     compileSdk = flutter.compileSdkVersion
@@ -46,9 +46,7 @@ android {
         // 保留 LINE SDK 所需的最低 Android 版本設定
         minSdk = 24
 
-        // 修正 Flutter SDK 屬性
         targetSdk = flutter.targetSdkVersion
-
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
@@ -58,15 +56,10 @@ android {
     signingConfigs {
         if (hasReleaseKey) {
             create("release") {
-                keyAlias =
-                    keystoreProperties["keyAlias"] as String
-                keyPassword =
-                    keystoreProperties["keyPassword"] as String
-                storeFile = file(
-                    keystoreProperties["storeFile"] as String
-                )
-                storePassword =
-                    keystoreProperties["storePassword"] as String
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
             }
         }
     }
@@ -82,8 +75,7 @@ android {
         }
 
         getByName("debug") {
-            signingConfig =
-                signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 }
@@ -100,4 +92,3 @@ kotlin {
 flutter {
     source = "../.."
 }
-

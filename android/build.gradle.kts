@@ -23,3 +23,11 @@ tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }
 
+gradle.projectsEvaluated {
+    rootProject.project(":flutter_facebook_auth")
+        .tasks.withType<org.gradle.api.tasks.compile.JavaCompile>()
+        .configureEach {
+            sourceCompatibility = "17"
+            targetCompatibility = "17"
+        }
+}
