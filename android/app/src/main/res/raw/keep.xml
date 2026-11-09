@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 通知套件用字串查找圖示，避免 release 的資源縮減誤刪此 drawable。 -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_medicine_notification" />

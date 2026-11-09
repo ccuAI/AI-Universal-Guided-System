@@ -21,6 +21,8 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // 支援通知套件使用的 Java API。
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -68,4 +70,12 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // 提供舊版 Android 所需的 Java API。
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+
+    // 將中文 OCR 模型打包進 App。
+    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
 }
