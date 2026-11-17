@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>語音測試</title>
+</head>
+<body>
+    <h2>語音掛號測試</h2>
+    <button onclick="startRecognition()">開始說話</button>
+    <p>辨識結果：<span id="result"></span></p>
+    <p>系統回應：<span id="response"></span></p>
+
+    <script>
+        function startRecognition() {
+            const recognition = new webkitSpeechRecognition();
+            recognition.lang = "zh-TW";
+            recognition.continuous = false;
+            recognition.interimResults = false;
+
+            recognition.onresult = function(event) {
+                const text = event.results[0][0].transcript;
+                document.getElementById("result").innerText = text;
+
+                // 呼叫你的後端API
+                fetch("http://127.0.0.1:8000/api/analyze_symptom", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ text: text })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    document.getElementById("response").innerText = data.speech;
+
+                    // 把系統回應念出來
+                    const utterance = new SpeechSynthesisUtterance(data.speech);
+                    utterance.lang = "zh-TW";
+                    utterance.rate = 0.9;
+                    speechSynthesis.speak(utterance);
+                })
+                .catch(err => {
+                    console.error(err);
+                    alert("無法連線到後端，請確認API有在執行");
+                });
+            };
+
+            recognition.onerror = function(event) {
+                alert("語音辨識錯誤：" + event.error);
+            };
+
+            recognition.start();
+        }
+    </script>
+</body>
+</html>
