@@ -1,16 +1,31 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-
+import 'package:firebase_core/firebase_core.dart';
 import 'firstpage.dart';
 import 'secondpage.dart';
 import 'daily_med_news.dart';
 import 'hospital_helper.dart';
 import 'medicine_taker.dart';
+import 'firebase_options.dart';
 import 'medicine/medicine_notification_service.dart';
 import 'medicine/medicine_repository.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  try {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
+  } catch (e) {
+    if (e.toString().contains('duplicate-app')) {
+      debugPrint("Firebase 已在其他地方初始化，忽略此重複建立的錯誤。");
+    } else {
+      rethrow; // 如果是其他種類的 Firebase 錯誤則依然拋出
+    }
+  }
+  
   runApp(const MyApp());
 }
 

@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "568574650772",
+    "project_id": "medapp-eb7a3",
+    "storage_bucket": "medapp-eb7a3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:568574650772:android:9d30b795fc5c789694c781",
+        "android_client_info": {
+          "package_name": "com.med.myproject"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "568574650772-pp5dups608nt326ckcisk6bsuiej5q6k.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.med.myproject",
+            "certificate_hash": "f55f06cea2490108a751976fccb7a84f03f847ac"
+          }
+        },
+        {
+          "client_id": "568574650772-5fm049p107851r9e84982pjatarufnkh.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBJ-Q1mpAz7Kir7UR4hZCqS7EnmDI9e2hk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "568574650772-5fm049p107851r9e84982pjatarufnkh.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
