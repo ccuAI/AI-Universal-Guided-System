@@ -1,0 +1,122 @@
+醫師藥單 QR code：建立服藥提醒的新流程
+更新日期：2026-11-21
+本檔用途：說明以醫師藥單 QR code 取代藥袋 OCR 後的運作方式、檔案與限制。
+
+一、為什麼改
+藥袋 OCR 受拍攝品質、版面與縮寫影響，辨識結果需要病人逐欄核對，精確度不足。
+改由醫師在系統輸入本次看診用藥，列印藥單時附上 QR code；
+病人掃描後直接取得結構化資料，不再做文字辨識或猜測欄位。
+提醒排程、通知、今日服藥、歷史紀錄等其他部分沒有修改。
+
+二、整體流程
+醫師端 doctor_portal/index.html
+  輸入看診資訊與用藥 → 即時驗證 → 產生 QR code 與藥單預覽 → 列印
+病人端 吃藥小助手
+  新增用藥 → 掃描醫師藥單 QR code（或從相簿選照片／輸入藥單代碼）
+  → 解析並整張驗證 → 一次建立所有用藥計畫 → 同步本機通知
+  → 顯示匯入摘要（可「撤銷這次匯入」）→ 之後可在「用藥計畫」逐項修改
+
+三、醫師端使用方式
+1. 用瀏覽器直接開啟 doctor_portal/index.html（不需伺服器、不需網路）。
+   vendor/qrcode.js 必須與 index.html 放在一起。
+2. 填寫診所、醫師、看診日期、開始服藥日；病人姓名與病歷號選填，只印在紙本。
+   診所與醫師名稱會記在這台電腦的瀏覽器，下次免重打。
+3. 每項用藥填藥名（選填）、每次用量、單位、用法、頻率與療程天數或長期用藥。
+   頻率預設時間：QD 08:00、BID 08:00/20:00、TID 08:00/13:00/18:00、
+   QID 08:00/12:00/17:00/21:00、HS 21:00（用法自動改為睡前）、PRN 需要時服用。
+   時間可增刪修改，改過即視為「自訂時間」。
+4. 資料完整時右側即時顯示藥單與 QR code；未完成時列出缺漏並淡化舊 QR，
+   不能列印，避免印出與表單不一致的 QR code。
+5. 按「列印藥單」以 A5 版面列印；「複製藥單代碼」可給沒有相機的病人輸入或測試。
+6. 新的看診按「新藥單」，會產生新的藥單編號。
+
+四、QR code 格式（兩端必須一致）
+內容：AIGSRX1: + UTF-8 JSON 的 base64url（無補位）。全部 ASCII，避免掃描器誤判中文編碼。
+JSON 欄位：
+  v    格式版本，目前 1
+  id   藥單編號，例如 RX-20261121-460DBD7F，用來防止重複匯入
+  c    診所／醫院
+  dr   醫師（選填）
+  vd   看診日期 YYYY-MM-DD
+  s    開始服藥日 YYYY-MM-DD（選填，預設看診日期）
+  m    用藥陣列，1～20 項：
+       n 藥名（選填）、a 每次用量（>0）、u 單位、w 用法、
+       t 每日提醒時間 ["HH:MM"]（固定服用 1～12 個、不可重複；需要時服用為空）、
+       p 是否需要時服用、days 療程天數 1～365 或 lt:true 長期（二選一）、note 醫囑備註（選填）
+用法限：飯前、飯後、隨餐、睡前、依藥袋指示、未註明（與 App 表單選項相同）。
+病人姓名、病歷號不放入 QR code。
+App 端實作：lib/medicine/medicine_prescription_qr.dart；醫師端實作：doctor_portal/index.html。
+
+五、App 匯入規則
+- 前綴不符、內容損壞、版本不支援或任一欄位不合規則時，整張拒絕並顯示原因，不部分採用。
+- 每項用藥建立一個用藥計畫：有藥名時以藥名為標題（通知標題「用藥提醒：藥名」），
+  沒有藥名時沿用「診所用藥」命名；醫囑備註放入計畫備註；
+  「查看資料來源」顯示藥單編號、看診日、醫師與藥名。
+- 療程以開始日起算日曆天數。晚幾天才掃描只建立剩餘天數的提醒；
+  療程已結束的項目不建立，全部結束時提示不建立。
+- 同一張藥單的所有項目在同一個交易中保存，全部成功或全部不寫入。
+- 同一藥單編號已有計畫時不重複建立；刪除那些計畫後可重新匯入。
+  修改計畫時保留藥單編號。
+- 匯入後立即同步通知並在第一次時要求通知權限，與原本保存計畫後的行為相同。
+- 手動新增用藥仍保留，作為沒有 QR code 藥單時的備案。
+
+六、移除 OCR
+- 移除「拍攝藥袋並離線辨識」「從相簿選取藥袋」入口與裁切／校正流程。
+- 程式移到 archive/ocr_removed_2026-11-21/（此專案沒有 git，保留備份；
+  analysis_options.yaml 已排除 archive/）：
+  medicine_ocr_service.dart、medicine_parser.dart、medicine_photo_prepare_page.dart、
+  medicine_image_processing.dart，及其測試 medicine_ocr_review_test.dart、
+  medicine_image_processing_test.dart。確認不再需要後可整個資料夾刪除。
+- pubspec.yaml 移除 google_mlkit_text_recognition；image 改為 dev_dependencies（僅測試使用）。
+- android/app/build.gradle.kts 移除 com.google.mlkit:text-recognition-chinese。
+- ios/Podfile 移除 GoogleMLKit/TextRecognitionChinese；Info.plist 相機／相簿說明改為掃描藥單。
+- 舊資料中的藥袋照片與 OCR 原文仍保留顯示，不受影響。
+
+七、新增／修改的檔案
+lib/medicine/medicine_prescription_qr.dart   QR 格式、驗證、轉成用藥計畫。
+lib/medicine/medicine_qr_scan_page.dart       相機掃描頁（mobile_scanner）、相簿選圖、手電筒。
+lib/medicine_taker.dart                        新增用藥選單、匯入流程、重複提示、匯入摘要與撤銷。
+lib/medicine/medicine_repository.dart          importPlans：整張藥單同交易保存與重複檢查。
+lib/medicine/medicine_models.dart              MedicinePlan 新增 prescriptionId（舊資料為 null）。
+lib/medicine/medicine_editor_page.dart         修改時保留 prescriptionId；更新 OCR 時期的文字。
+doctor_portal/index.html                       醫師端：輸入看診資訊、產生 QR code、列印藥單。
+doctor_portal/vendor/qrcode.js                 qrcode-generator 1.4.4（MIT，Kazuhiko Arase），本機產生 QR。
+test/medicine_prescription_qr_test.dart        格式解析、驗證、跨端相容（醫師端實際產生的代碼）。
+test/medicine_editor_review_test.dart          改用 MedicineDraft 取代已移除的 OCR parser。
+pubspec.yaml 新增 mobile_scanner 7.5.0：Android 內建 ML Kit 條碼模型、iOS 使用 Apple Vision，皆可離線。
+
+八、已驗證
+- flutter analyze：新增與修改的檔案沒有問題（剩下的是原有檔案的 5 則 info）。
+- flutter test：21 項通過；test/widget_test.dart 仍是原有計數器範本而失敗，與本次無關。
+- 醫師端在瀏覽器填寫 3 項用藥，產生 500 字元代碼；把 QR 圖片截圖後用 zxing-cpp 解碼，
+  內容與代碼完全一致；同一代碼通過 App 端解析測試。
+- Chrome 版 App：輸入藥單代碼後建立 3 項計畫（含需要時服用與長期用藥），
+  重複輸入同一代碼顯示「已經匯入」，另一張藥單匯入後「撤銷這次匯入」成功，
+  匯入的計畫可用原表單開啟修改。
+
+- Android 模擬器實測（2026-11-21，Medium_Phone_API_37.0，時區 Asia/Taipei）：
+  覆蓋安裝 debug APK 後，原有計畫正常顯示（舊資料相容）。
+  掃描頁要求相機權限並顯示相機預覽；從相簿選醫師端 QR 截圖，
+  mobile_scanner（Android ML Kit 條碼）成功辨識並自動建立計畫，摘要顯示正確。
+  dumpsys alarm 確認 14:18:00 精準排程（RTC_WAKEUP、window=0、exactAllowReason=permission）。
+  App 在背景，14:18 系統跳出「用藥提醒：TEST-QR-1121」（channel medicine_reminders）。
+  點通知開啟當日歷史紀錄。測試後已刪除測試計畫與模擬器中的測試圖片。
+
+- 開啟開發人員模式後重測（2026-11-23，同一模擬器）：
+  flutter pub get 直接成功並重新產生 GeneratedPluginRegistrant（只含 mobile_scanner，無 mlkit 文字辨識），
+  flutter build apk 不需任何暫時改名即建置成功；藥品相關檔案 analyze 無問題、測試 20 項通過。
+  覆蓋安裝後舊計畫仍在；相機權限詢問與預覽正常；從相簿選 QR（RX-20261123-TESTDEV1）
+  自動建立計畫並排定 20:38:00 精準鬧鐘；App 在背景，20:38 跳出「用藥提醒：TEST-QR-1123」
+  「1 錠・飯後。服用後請到 App 記錄。」；點通知開啟當日歷史紀錄。測試計畫與圖片已刪除。
+
+建置注意：Windows 必須開啟「開發人員模式」，否則 flutter pub get 建立桌面外掛 symlink 失敗，
+不會重新產生 Android 的 GeneratedPluginRegistrant.java（會殘留已移除外掛而編譯失敗）。
+（2026-11-23 已開啟，問題已解決；未開啟的電腦可暫時改名 windows/、linux/ 後執行 flutter pub get 再改回。）
+
+九、尚未驗證／限制
+- 尚未用相機鏡頭實際掃描紙本 QR code（模擬器相機只有虛擬場景），
+  需在實體 Android 手機確認；iOS 需在 Mac 執行 pod install 後建置測試。
+- QR code 沒有數位簽章，任何人都能產生相同格式的 QR code；
+  目前靠匯入摘要讓病人確認。若要防偽，需要醫院端金鑰簽章與 App 驗章。
+- 醫師端不保存看診紀錄、不連接醫院 HIS 系統，也沒有登入；僅供展示與列印。
+- 用藥項目很多或備註很長時 QR code 會變密，頁面會顯示字元數；超過容量時會提示。
