@@ -1,0 +1,137 @@
+服藥系統：檔案用途與程式閱讀順序
+2026-11-21 藥袋 OCR 已移除，改為掃描醫師藥單 QR code 建立提醒；詳見 docs/醫師藥單QR_流程.txt。
+下方關於 OCR、拍照辨識的說明為歷史紀錄。
+更新日期：2026-11-09
+2026-10-27 新增裁切／四角校正、原圖對照、衝突與逐欄核對。
+2026-11-09 移除四個欄位下方的提示卡片與個別勾選，改用表單最後一次確認。
+完整新流程、各檔案用途及測試指令請見 docs/藥袋辨識_裁切核對流程.txt。
+
+建議先讀 lib/medicine_taker.dart 的 _add → _import → _openEditor → _reload，
+再看確認表單、資料庫與通知服務。程式裡有繁體中文註釋說明處理原因。
+下列路徑以專案根目錄為基準。
+
+1. lib/medicine_taker.dart
+   吃藥小助手的整合畫面：新增入口、相機／相簿、OCR 錯誤處理、
+   多藥逐項確認、今日服藥、用藥計畫、歷史紀錄、診所篩選與狀態提示。
+   _busy 避免重複操作；刷新佇列避免丟失保存後的更新；
+   生命週期監聽回到 App，Timer 只用於跨午夜刷新畫面，不用來發送通知。
+
+2. lib/medicine/medicine_models.dart
+   純資料模型與日期／時間標籤。
+   MedicineDraft：OCR 候選值，未知留空。
+   MedicinePlan：用藥顯示標題、確認過的用量、用法、每天分鐘時刻與有效日期。
+   新計畫自動以診所或「藥袋用藥」命名；不要求病人填藥品名稱。
+   MedicineDose：單次事件與歷史快照，含 pending／taken／skipped 和紀錄時間。
+   序列化供 SQLite 與瀏覽器預覽共用。
+
+3. lib/medicine/medicine_parser.dart
+   用正規表示式整理 OCR 文字；辨識明確標籤，不計算處方或猜測未知值。
+   依藥名標籤分割多藥候選，不把某一藥品用量套給另一項。
+   沒有足夠線索仍交回草稿讓使用者手動核對。
+
+4. lib/medicine/medicine_ocr_service.dart
+   ML Kit 中文離線辨識入口。只允許 Android／iOS；校正位元組暫存為本機 InputImage。
+   try／finally 關閉原生 TextRecognizer；此檔沒有 HTTP 請求或照片上傳。
+
+5. lib/medicine/medicine_editor_page.dart
+   OCR、手動新增、修改共用確認表單。
+   必填、正數用量、不重複時間、日期範圍與核對勾選驗證；
+   未知提醒時間不給預設值。支援需要時用藥、長期計畫與原照片／原文對照。
+   保存成功回傳 MedicinePlan，由整合頁更新通知。
+   用量、用法、次數與療程下方不再顯示提示卡片及個別核對勾選；
+   只保留最後一次確認，修改內容後會撤銷確認；必填及保存驗證照常執行。
+   藥品名稱欄位已移除。
+   原圖／校正圖固定於表單旁供放大核對。
+
+6. lib/medicine/medicine_repository.dart
+   唯一資料讀寫入口。
+   Android／iOS：SQLite 的 plans／doses 表、交易、事件去重與 App 私有照片。
+   Chrome／桌面：SharedPreferences JSON 預覽快照、寫入排隊與失敗還原。
+   保存／修改／刪除保留已記錄快照；產生近期事件、查詢日期與待提醒事件。
+   相機暫存照片複製保存，失敗或刪除計畫時清理不再使用的照片。
+
+7. lib/medicine/medicine_notification_service.dart
+   初始化本機通知、讀裝置時區、通知／精準時間授權、序列化同步、
+   比對排程指紋、取消失效提醒、顯示最後日期與權限狀態。
+   每次事件對應一個通知 id；保留 medicine-dose: payload 以辨識本模組。
+   對應通知點擊／冷啟動事件 id 交給 main.dart。
+
+8. lib/main.dart
+   Flutter App 入口與原有頁面路由。
+   新增原生通知初始化、回到 App 延伸排程，以及通知點擊導至服藥歷史。
+   命名的 medicine_taker 路由也採 CupertinoPageRoute 支援邊緣返回。
+   原本登入與其他功能頁面保留。
+
+9. lib/secondpage.dart
+   原有首頁與吃藥小助手入口；用 push 保留首頁，CupertinoPageRoute 可返回。
+   不存在的 news_icon.png／pill_icon.png 改為 Flutter 內建圖示。
+
+10. pubspec.yaml
+    Flutter、OCR、相機、SQLite、預覽儲存、照片目錄、時區與通知套件依賴。
+    flutter.config 關閉 iOS Swift Package Manager，中文模型統一由 CocoaPods 整合。
+    pubspec.lock 鎖定 flutter pub get 解析出的套件版本，不能當成手寫設定修改。
+
+11. android/app/build.gradle.kts
+    Android App 建置、Java／Kotlin 17、minSdk 24、簽章設定。
+    com.google.mlkit:text-recognition-chinese:16.0.1 將中文模型打包。
+    desugar_jdk_libs 補齊本機通知所需的舊 Android Java API。
+
+12. android/app/src/main/AndroidManifest.xml
+    Android App 入口與權限宣告；新增通知、重開機與精準鬧鐘權限、
+    排程通知接收器與開機恢復接收器，相機列為非必要硬體。
+    宣告權限不等於使用者已授權，程式仍須檢查目前權限。
+
+13. android/app/src/main/res/drawable/ic_medicine_notification.xml
+    通知狀態列白色小圖示，供通知套件以資源名稱查找。
+
+14. android/app/src/main/res/raw/keep.xml
+    防止 release 資源縮減移除以字串名稱引用的通知圖示。
+
+15. ios/Podfile
+    Flutter CocoaPods 整合與 GoogleMLKit/TextRecognitionChinese 9.0.x，
+    統一最低 iOS 15.5，排除 ML Kit 不支援的 armv7。
+    需在 Mac 執行 pod install；本次沒有生成 Podfile.lock。
+
+16. ios/Flutter/Debug.xcconfig、ios/Flutter/Release.xcconfig
+    載入 CocoaPods Debug／Release 建置設定，再載入 Flutter Generated.xcconfig。
+
+17. ios/Runner.xcodeproj/project.pbxproj
+    Xcode Runner 專案設定；最低部署版本改為 15.5，
+    移除 FlutterGeneratedPluginSwiftPackage 的專案引用，改由 CocoaPods 整合。
+
+18. ios/Runner/Info.plist
+    iOS App 基本設定，新增相機／相簿存取的用途說明。
+
+19. ios/Runner/AppDelegate.swift
+    原生 Flutter 啟動與外掛註冊；設定 UNUserNotificationCenter delegate，
+    支援 App 前景通知與通知點擊。
+
+20. docs/服藥系統_使用與限制.txt
+    使用方式、平台差異、資料與通知的保留範圍、原生建置前提、
+    市面相似產品比較、官方技術來源，以及待執行測試清單。
+
+21. docs/服藥系統_檔案用途.txt
+    本檔，解釋這次新增／修改檔案與閱讀順序。
+
+22. docs/專案檔案用途.txt
+    整個專案可見原始碼／設定／資源的逐檔索引。
+    產物目錄、套件快取與機器自動生成檔另有用途說明，不逐一解釋編譯中間檔。
+
+其他原有功能
+lib/firstpage.dart：登入介面，目前部分登入按鈕是直接導航示範。
+lib/auth_service.dart：第三方登入／Firebase 的服務程式，與本機服藥儲存未整合。
+lib/hospital_helper.dart：就醫夥伴 WebView。
+lib/daily_med_news.dart：醫療早報畫面。
+lib/API.dart：原有 API 程式；本次服藥功能不呼叫此檔。
+backfront/app.py：Flask 照片上傳示範，本機 OCR 流程不使用它。
+test/widget_test.dart：原有計數器範本，與現在 App 不符；此次未改寫。
+
+2026-10-27 新增檔案
+lib/medicine/medicine_image_processing.dart：純 Dart 方向與投影校正。
+lib/medicine/medicine_photo_prepare_page.dart：裁切／四角校正及預覽。
+lib/medicine/medicine_photo_comparison.dart：原圖、校正圖、縮放對照。
+test/medicine_ocr_review_test.dart：文字歧義與資料相容測試。
+test/medicine_image_processing_test.dart：影像轉換及幾何測試。
+test/medicine_editor_review_test.dart：最後確認、修改後撤銷、必填驗證與照片對照測試。
+test/medicine_timezone_test.dart：GMT 時區別名測試。
+docs/藥袋辨識_裁切核對流程.txt：本次操作、限制、技術／產品比較與逐檔用途。

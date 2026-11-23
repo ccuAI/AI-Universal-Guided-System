@@ -6,9 +6,9 @@ import 'medicine_models.dart';
 import 'medicine_repository.dart';
 import 'medicine_photo_comparison.dart';
 
-/// OCR／手動輸入／編輯共用的確認表單。
+/// 手動新增與修改用藥計畫共用的確認表單（醫師藥單 QR 匯入後也用此表單修改）。
 ///
-/// OCR 只能預填候選值。未知欄位保持空白，每個提醒時間都由使用者親自選擇；
+/// 草稿只能預填候選值。未知欄位保持空白，每個提醒時間都由使用者親自選擇；
 /// 表單只保留最後一次核對勾選；通過欄位驗證後才保存，通知由上一頁同步。
 class MedicineEditorPage extends StatefulWidget {
   const MedicineEditorPage({
@@ -196,6 +196,8 @@ class _MedicineEditorPageState extends State<MedicineEditorPage> {
         photoPath: widget.plan?.photoPath,
         correctedPhotoPath: widget.plan?.correctedPhotoPath,
         reviewIssues: _issues,
+        // 醫師藥單匯入的計畫修改後仍屬同一張藥單，避免重掃時重複建立。
+        prescriptionId: widget.plan?.prescriptionId,
       );
       final saved = await MedicineRepository.instance.savePlan(
         plan,
@@ -264,7 +266,7 @@ class _MedicineEditorPageState extends State<MedicineEditorPage> {
                 children: [
                   if (rawText.isNotEmpty)
                     ExpansionTile(
-                      title: const Text('查看藥袋辨識原文'),
+                      title: const Text('查看資料來源'),
                       children: [
                         Padding(
                           padding: const EdgeInsets.all(12),
@@ -274,7 +276,7 @@ class _MedicineEditorPageState extends State<MedicineEditorPage> {
                     ),
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 16),
-                    child: Text('請逐項核對原藥袋。空白欄位需要補填；提醒時間由你確認。'),
+                    child: Text('請逐項核對藥單或藥袋。空白欄位需要補填；提醒時間由你確認。'),
                   ),
                   _textField(_clinic, '診所／醫院（選填）'),
                   Row(

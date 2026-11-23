@@ -37,6 +37,7 @@ class MedicinePlan {
     this.photoPath,
     this.correctedPhotoPath,
     this.reviewIssues = const [],
+    this.prescriptionId,
   });
 
   final int id;
@@ -57,6 +58,10 @@ class MedicinePlan {
   /// 原始照片與校正照片分開保存；舊資料沒有校正照片時仍可正常讀取。
   final String? correctedPhotoPath;
   final List<MedicineReviewIssue> reviewIssues;
+
+  /// 由醫師藥單 QR code 建立時的藥單編號；手動新增或舊資料為 null。
+  /// 用來避免同一張藥單重複匯入，修改計畫時必須保留。
+  final String? prescriptionId;
 
   String get doseLabel =>
       '${amount == amount.roundToDouble() ? amount.toInt() : amount} $unit';
@@ -96,6 +101,7 @@ class MedicinePlan {
     'photoPath': photoPath,
     'correctedPhotoPath': correctedPhotoPath,
     'reviewIssues': reviewIssues.map((issue) => issue.toJson()).toList(),
+    'prescriptionId': prescriptionId,
   };
 
   factory MedicinePlan.fromJson(Map<String, dynamic> json) => MedicinePlan(
@@ -125,6 +131,7 @@ class MedicinePlan {
           ),
         )
         .toList(),
+    prescriptionId: json['prescriptionId'] as String?,
   );
 }
 

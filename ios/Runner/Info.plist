@@ -2,6 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- 掃描醫師藥單 QR code 與從相簿選取藥單照片的用途說明；辨識在手機內完成。 -->
+	<key>NSCameraUsageDescription</key>
+	<string>掃描醫師藥單上的 QR code，以建立用藥提醒。</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>選取藥單照片，辨識其中的 QR code 以建立用藥提醒。</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

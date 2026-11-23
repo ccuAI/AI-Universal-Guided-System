@@ -240,6 +240,64 @@ class MedicineRepository {
     return saved;
   }
 
+  /// 一張醫師藥單的多項用藥一起保存：全部成功或全部不寫入。
+  ///
+  /// 同一藥單編號已有計畫時拋出 [DuplicatePrescriptionException]，
+  /// 避免重複掃描產生兩份提醒。刪除那些計畫後可再次匯入。
+  Future<List<MedicinePlan>> importPlans(
+    String prescriptionId,
+    List<MedicinePlan> plans,
+  ) async {
+    await initialize();
+    for (final plan in plans) {
+      if (plan.id != 0 || plan.prescriptionId != prescriptionId) {
+        throw ArgumentError('匯入的計畫必須是同一張藥單的新計畫');
+      }
+      _validate(plan);
+    }
+    final saved = <MedicinePlan>[];
+    if (!usesMobileDatabase) {
+      await _mutatePreview(() {
+        if (_previewPlans.any((p) => p.prescriptionId == prescriptionId)) {
+          throw DuplicatePrescriptionException(prescriptionId);
+        }
+        for (final plan in plans) {
+          final item = plan.withIdentity(_nextPlan++, null);
+          _previewPlans.add(item);
+          _generatePreview(item);
+          saved.add(item);
+        }
+      });
+      return saved;
+    }
+    await _database!.transaction((tx) async {
+      // 在同一交易中檢查重複，避免連續掃描兩次時都通過檢查。
+      for (final row in await tx.query('plans')) {
+        final existing = MedicinePlan.fromJson(
+          jsonDecode(row['payload'] as String) as Map<String, dynamic>,
+        );
+        if (existing.prescriptionId == prescriptionId) {
+          throw DuplicatePrescriptionException(prescriptionId);
+        }
+      }
+      for (final plan in plans) {
+        final id = await tx.insert('plans', {
+          'payload': jsonEncode(plan.toJson()),
+        });
+        final item = plan.withIdentity(id, null);
+        await tx.update(
+          'plans',
+          {'payload': jsonEncode(item.toJson())},
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+        await _generateMobile(tx, item);
+        saved.add(item);
+      }
+    });
+    return saved;
+  }
+
   static void _validate(MedicinePlan plan) {
     if (plan.name.trim().isEmpty ||
         !plan.amount.isFinite ||
@@ -546,4 +604,13 @@ class MedicineRepository {
       debugPrint('清理藥袋照片失敗：$error');
     }
   }
+}
+
+/// 同一張醫師藥單已經匯入過。
+class DuplicatePrescriptionException implements Exception {
+  const DuplicatePrescriptionException(this.prescriptionId);
+  final String prescriptionId;
+
+  @override
+  String toString() => '藥單 $prescriptionId 已匯入';
 }

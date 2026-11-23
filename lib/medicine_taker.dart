@@ -3,21 +3,20 @@ import 'dart:async';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 
 import 'medicine/medicine_editor_page.dart';
 import 'medicine/medicine_models.dart';
 import 'medicine/medicine_notification_service.dart';
-import 'medicine/medicine_ocr_service.dart';
-import 'medicine/medicine_parser.dart';
-import 'medicine/medicine_photo_prepare_page.dart';
+import 'medicine/medicine_prescription_qr.dart';
+import 'medicine/medicine_qr_scan_page.dart';
 import 'medicine/medicine_repository.dart';
 
 /// 吃藥小助手的整合頁。
 ///
 /// 三個分頁分別處理今日待服藥、用藥計畫與逐日紀錄。
-/// 畫面不直接寫資料庫、不自行辨識或推算劑量；分別委派 repository、
-/// OCR、parser 與 notification service，並在每個 await 後確認 mounted。
+/// 新增用藥以掃描醫師藥單 QR code 為主，手動新增為輔；已不使用藥袋 OCR。
+/// 畫面不直接寫資料庫、不自行推算劑量；分別委派 repository、
+/// prescription QR 解析與 notification service，並在每個 await 後確認 mounted。
 class MedicineTakerPage extends StatefulWidget {
   const MedicineTakerPage({super.key, this.initialDoseId});
   final int? initialDoseId;
@@ -30,8 +29,6 @@ class _MedicineTakerPageState extends State<MedicineTakerPage>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final _repository = MedicineRepository.instance;
   final _notifications = MedicineNotificationService.instance;
-  final _ocr = MedicineOcrService();
-  final _picker = ImagePicker();
   late final TabController _tabs;
   List<MedicinePlan> _plans = [];
   List<MedicineDose> _today = [];
@@ -178,109 +175,164 @@ class _MedicineTakerPageState extends State<MedicineTakerPage>
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
+              leading: const Icon(Icons.qr_code_scanner),
+              title: const Text('掃描醫師藥單 QR code'),
+              subtitle: const Text('自動建立用藥計畫與提醒'),
+              enabled: MedicineQrScanPage.supported,
+              onTap: () => Navigator.pop(context, 'scan'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.keyboard),
+              title: const Text('輸入藥單代碼'),
+              subtitle: const Text('無法使用相機時，輸入藥單上的代碼'),
+              onTap: () => Navigator.pop(context, 'code'),
+            ),
+            ListTile(
               leading: const Icon(Icons.edit_note),
               title: const Text('手動新增用藥'),
               onTap: () => Navigator.pop(context, 'manual'),
             ),
-            ListTile(
-              leading: const Icon(Icons.camera_alt),
-              title: const Text('拍攝藥袋並離線辨識'),
-              enabled: _ocr.supported,
-              onTap: () => Navigator.pop(context, 'camera'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library),
-              title: const Text('從相簿選取藥袋'),
-              enabled: _ocr.supported,
-              onTap: () => Navigator.pop(context, 'gallery'),
-            ),
-            if (!_ocr.supported)
-              const Padding(
-                padding: EdgeInsets.all(16),
-                child: Text('目前可手動輸入；藥袋離線辨識需要手機 App。'),
-              ),
           ],
         ),
       ),
     );
     if (!mounted) return;
     if (action == 'manual') await _manual();
-    if (action == 'camera') await _import(ImageSource.camera);
-    if (action == 'gallery') await _import(ImageSource.gallery);
+    if (action == 'scan') await _scanPrescription();
+    if (action == 'code') await _enterPrescriptionCode();
   }
 
-  Future<void> _import(ImageSource source) async {
-    if (_busy || !_ocr.supported) return;
-    setState(() => _busy = true);
-    var savedCount = 0;
+  Future<void> _scanPrescription() async {
+    if (_busy) return;
+    final raw = await Navigator.of(context).push<String>(
+      CupertinoPageRoute(builder: (_) => const MedicineQrScanPage()),
+    );
+    if (raw != null && mounted) await _importPrescription(raw);
+  }
+
+  Future<void> _enterPrescriptionCode() async {
+    if (_busy) return;
+    final raw = await showDialog<String>(
+      context: context,
+      builder: (_) => const _PrescriptionCodeDialog(),
+    );
+    if (raw != null && raw.trim().isNotEmpty && mounted) {
+      await _importPrescription(raw);
+    }
+  }
+
+  /// 解析藥單並一次建立所有用藥計畫；不經過逐項確認表單。
+  /// 建立後顯示摘要，可立即撤銷；之後也能在「用藥計畫」逐項修改。
+  Future<void> _importPrescription(String raw) async {
+    if (_busy) return;
+    final MedicinePrescription prescription;
     try {
-      final photo = await _picker.pickImage(
-        source: source,
-        maxWidth: 2400,
-        maxHeight: 2400,
-        imageQuality: 95,
+      prescription = MedicinePrescription.decode(raw);
+    } on FormatException catch (error) {
+      await _alert('無法讀取藥單', error.message);
+      return;
+    }
+    final plans = prescription.toPlans(DateTime.now());
+    if (plans.isEmpty) {
+      await _alert('療程已結束', '這張藥單的所有用藥療程都已結束，沒有建立新的提醒。');
+      return;
+    }
+    setState(() => _busy = true);
+    var saved = <MedicinePlan>[];
+    try {
+      saved = await _repository.importPlans(prescription.id, plans);
+    } on DuplicatePrescriptionException {
+      if (mounted) setState(() => _busy = false);
+      await _alert(
+        '這張藥單已經匯入',
+        '藥單 ${prescription.id} 的用藥計畫已存在，沒有重複建立。'
+            '若要重新匯入，請先在「用藥計畫」刪除原本的項目。',
       );
-      if (photo == null || !mounted) return;
-      final bytes = await photo.readAsBytes();
-      if (!mounted) return;
-      // 使用者先裁切／調整四角，再將工作副本送入 OCR；取消不寫入任何計畫。
-      final corrected = await Navigator.of(context).push<Uint8List>(
-        CupertinoPageRoute(
-          builder: (_) => MedicinePhotoPreparePage(bytes: bytes),
-        ),
-      );
-      if (corrected == null || !mounted) return;
-      var text = '';
-      try {
-        text = await _ocr.recognizeBytes(corrected);
-      } catch (error) {
-        debugPrint('離線藥袋辨識失敗：$error');
-        if (!mounted) return;
-        // 模糊、無文字或原生辨識失敗時仍能對照照片手動建立計畫。
-        final manual = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('未能完成文字辨識'),
-            content: const Text('可重新拍攝較清楚的照片，或對照這張照片手動填寫。'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('取消，稍後重拍'),
+      return;
+    } catch (error) {
+      debugPrint('匯入醫師藥單失敗：$error');
+      if (mounted) setState(() => _busy = false);
+      await _alert('匯入失敗', '資料保存失敗，沒有建立任何提醒，請重試。');
+      return;
+    }
+    try {
+      await _reload(requestPermission: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+    if (!mounted) return;
+    final skipped = prescription.items.length - saved.length;
+    final undo = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('已建立 ${saved.length} 項用藥提醒'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${prescription.clinic}'
+                '${prescription.doctor.isEmpty ? '' : '・${prescription.doctor}'}'
+                '\n看診日 ${dateLabel(prescription.visitDate)}',
               ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('手動填寫'),
+              const SizedBox(height: 12),
+              for (final plan in saved)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    '• ${plan.name}：${plan.doseLabel}・${plan.meal}\n'
+                    '  ${plan.asNeeded ? '需要時服用' : plan.times.map(timeLabel).join('、')}'
+                    '・${plan.endDate == null ? '長期用藥' : '至 ${dateLabel(plan.endDate!)}'}',
+                  ),
+                ),
+              if (skipped > 0) Text('另有 $skipped 項療程已結束，未建立。'),
+              const SizedBox(height: 8),
+              Text(
+                _reminders.message,
+                style: Theme.of(context).textTheme.bodySmall,
               ),
+              const Text('提醒時間可在「用藥計畫」修改。'),
             ],
           ),
-        );
-        if (manual != true) return;
-      }
-      if (!mounted) return;
-      final drafts = MedicineParser.parse(text);
-      for (var index = 0; index < drafts.length; index++) {
-        if (!mounted) return;
-        final saved = await _openEditor(
-          draft: drafts[index],
-          bytes: bytes,
-          correctedBytes: corrected,
-          title: drafts.length == 1
-              ? '核對藥袋用藥'
-              : '核對第 ${index + 1}／${drafts.length} 項用藥',
-        );
-        // 使用者離開表單即中止後續候選；先前已明確保存的項目仍保留。
-        if (saved == null) break;
-        savedCount++;
-      }
-    } catch (error) {
-      debugPrint('取得藥袋照片失敗：$error');
-      _message('無法取得照片，請確認相機／相簿權限後重試。');
-    } finally {
-      // 部分候選已保存時，即使後續取消，也必須同步已保存的通知。
-      await _reload(requestPermission: savedCount > 0);
-      if (mounted) setState(() => _busy = false);
-      if (savedCount > 0) _message('已保存 $savedCount 項用藥資料。');
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('撤銷這次匯入'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('完成'),
+          ),
+        ],
+      ),
+    );
+    if (undo == true && mounted) {
+      await _change(() async {
+        for (final plan in saved) {
+          await _repository.deletePlan(plan);
+        }
+      });
+      _message('已撤銷這次匯入。');
     }
+  }
+
+  Future<void> _alert(String title, String message) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _edit(MedicinePlan plan) async {
@@ -483,7 +535,8 @@ class _MedicineTakerPageState extends State<MedicineTakerPage>
           style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 12),
-        if (doses.isEmpty && prn.isEmpty) _empty('今天沒有服藥項目。\n可以拍攝藥袋或手動新增用藥。'),
+        if (doses.isEmpty && prn.isEmpty)
+          _empty('今天沒有服藥項目。\n可以掃描醫師藥單 QR code 或手動新增用藥。'),
         ...doses.map(_doseCard),
         for (final plan in prn)
           Card(
@@ -716,4 +769,49 @@ class _MedicineTakerPageState extends State<MedicineTakerPage>
       ),
     );
   }
+}
+
+/// 輸入藥單代碼的對話框；controller 由對話框自己管理，
+/// 關閉動畫期間仍可安全重建，不會使用已釋放的 controller。
+class _PrescriptionCodeDialog extends StatefulWidget {
+  const _PrescriptionCodeDialog();
+
+  @override
+  State<_PrescriptionCodeDialog> createState() =>
+      _PrescriptionCodeDialogState();
+}
+
+class _PrescriptionCodeDialogState extends State<_PrescriptionCodeDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('輸入藥單代碼'),
+    content: TextField(
+      controller: _controller,
+      autofocus: true,
+      minLines: 2,
+      maxLines: 6,
+      decoration: const InputDecoration(
+        hintText: '$medicinePrescriptionPrefix…',
+        border: OutlineInputBorder(),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('取消'),
+      ),
+      FilledButton(
+        onPressed: () => Navigator.pop(context, _controller.text),
+        child: const Text('建立提醒'),
+      ),
+    ],
+  );
 }

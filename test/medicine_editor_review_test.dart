@@ -5,7 +5,7 @@ import 'dart:typed_data';
 
 import 'package:image/image.dart' as img;
 import 'package:projectfront/medicine/medicine_editor_page.dart';
-import 'package:projectfront/medicine/medicine_parser.dart';
+import 'package:projectfront/medicine/medicine_models.dart';
 import 'package:projectfront/medicine/medicine_photo_comparison.dart';
 
 void main() {
@@ -14,7 +14,13 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    final draft = MedicineParser.parse('每次1錠\n需要時服用 飯後\n療程3天').single;
+    final draft = const MedicineDraft(
+      amount: '1',
+      unit: '錠',
+      meal: '飯後',
+      asNeeded: true,
+      days: 3,
+    );
     await tester.pumpWidget(
       MaterialApp(home: MedicineEditorPage(draft: draft)),
     );
@@ -54,7 +60,7 @@ void main() {
         home: MedicineEditorPage(
           photoBytes: bytes,
           correctedPhotoBytes: bytes,
-          draft: MedicineParser.parse('藥名：版面測試\n每次1錠').single,
+          draft: const MedicineDraft(name: '版面測試', amount: '1', unit: '錠'),
         ),
       ),
     );
@@ -74,7 +80,7 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    final draft = MedicineParser.parse('需要時服用 飯後\n療程3天').single;
+    final draft = const MedicineDraft(meal: '飯後', asNeeded: true, days: 3);
     await tester.pumpWidget(
       MaterialApp(home: MedicineEditorPage(draft: draft)),
     );
@@ -101,7 +107,7 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    final draft = MedicineParser.parse('□1日4次 飯後(前)\n✓1日3次 飯後(前)').single;
+    final draft = const MedicineDraft();
     await tester.pumpWidget(
       MaterialApp(home: MedicineEditorPage(draft: draft)),
     );
@@ -114,7 +120,7 @@ void main() {
     );
     expect(find.textContaining('文字辨識無法確認哪一格被勾選'), findsNothing);
     expect(find.byKey(const ValueKey('review-frequency')), findsNothing);
-    // 解析歧義時不自動挑選第一個值，保存時仍要求使用者補完欄位。
+    // 未知的用法與次數不自動帶入預設值，保存時仍要求使用者補完欄位。
     final save = find.byKey(const ValueKey('save-medicine-plan'));
     await tester.ensureVisible(save);
     await tester.tap(save);
