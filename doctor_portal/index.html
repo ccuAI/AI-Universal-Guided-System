@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>醫師開立藥單</title>
+<!--
+  醫師端簡易系統：輸入本次看診與用藥資訊，產生可列印、附 QR code 的藥單。
+  病人用「吃藥小助手」App 掃描後自動建立用藥提醒。
+  - 完全在瀏覽器本機執行，不連網、不上傳；直接用瀏覽器開啟此檔即可。
+  - QR 格式必須與 lib/medicine/medicine_prescription_qr.dart 一致。
+  - 病人姓名、病歷號只印在紙本，不放入 QR code。
+-->
+<style>
+  :root {
+    --bg: #f4f6f8; --panel: #ffffff; --ink: #1d2733; --muted: #5c6b7a;
+    --line: #d5dce3; --accent: #0f6e8c; --accent-ink: #ffffff;
+    --error: #b42318; --error-bg: #fdecea; --ok-bg: #e8f5ef; --ok: #17643f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12171c; --panel: #1b232b; --ink: #e6edf3; --muted: #9aa8b5;
+      --line: #33404c; --accent: #4fb3d4; --accent-ink: #08212b;
+      --error: #ff8a80; --error-bg: #3a1d1b; --ok-bg: #16302a; --ok: #7fd8a8;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.5 "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+  }
+  header { padding: 16px 20px; background: var(--accent); color: var(--accent-ink); }
+  header h1 { margin: 0; font-size: 20px; }
+  header p { margin: 2px 0 0; opacity: .85; font-size: 13px; }
+  main {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 520px);
+    gap: 20px; padding: 20px; max-width: 1400px; margin: 0 auto;
+  }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; padding: 16px; } }
+  section.card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 16px; margin-bottom: 16px;
+  }
+  h2 { margin: 0 0 12px; font-size: 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+  label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+  label.inline { flex-direction: row; align-items: center; gap: 6px; color: var(--ink); }
+  input, select, textarea {
+    font: inherit; color: var(--ink); background: var(--panel);
+    border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; min-width: 0;
+  }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; }
+  .hint { font-size: 12px; color: var(--muted); }
+  button {
+    font: inherit; border-radius: 6px; padding: 7px 14px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.link { border: none; background: none; color: var(--accent); padding: 4px 6px; }
+  .med { border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+  .med-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .med-head strong { font-size: 14px; }
+  .times { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; }
+  .times input { width: 110px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .errors { background: var(--error-bg); color: var(--error); border-radius: 8px; padding: 10px 14px; margin: 0 0 12px; }
+  .errors ul { margin: 4px 0 0; padding-left: 20px; }
+  .ok { background: var(--ok-bg); color: var(--ok); border-radius: 8px; padding: 10px 14px; margin: 0 0 12px; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .preview-wrap { position: sticky; top: 16px; align-self: start; }
+
+  /* 列印用藥單：固定白底黑字，與螢幕主題無關。 */
+  .slip {
+    background: #fff; color: #111; border: 1px solid #ccc; border-radius: 6px;
+    padding: 20px; font-size: 13px;
+  }
+  .slip h3 { margin: 0; font-size: 18px; text-align: center; }
+  .slip .sub { text-align: center; margin: 2px 0 12px; font-size: 13px; }
+  .slip dl { display: grid; grid-template-columns: auto 1fr auto 1fr; gap: 2px 10px; margin: 0 0 12px; }
+  .slip dt { font-weight: bold; }
+  .slip dd { margin: 0; }
+  .slip table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+  .slip th, .slip td { border: 1px solid #999; padding: 4px 6px; text-align: left; vertical-align: top; }
+  .slip th { background: #eee; }
+  .slip .qr { display: flex; gap: 14px; align-items: center; border-top: 1px dashed #999; padding-top: 12px; }
+  .slip .qr svg { width: 160px; height: 160px; flex: none; }
+  .slip .qr p { margin: 0 0 4px; }
+  .slip .muted { color: #555; font-size: 11px; }
+  .slip.stale { opacity: .35; }
+  .empty { color: var(--muted); padding: 40px 0; text-align: center; }
+
+  @media print {
+    @page { size: A5; margin: 10mm; }
+    body { background: #fff; }
+    header, .editor, .actions, .status, .preview-title { display: none !important; }
+    main { display: block; padding: 0; }
+    .preview-wrap { position: static; }
+    .slip { border: none; padding: 0; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>醫師開立藥單</h1>
+  <p>輸入看診與用藥資訊，列印附 QR code 的藥單；病人用「吃藥小助手」掃描後自動建立提醒。資料只在本機瀏覽器處理。</p>
+</header>
+<main>
+  <div class="editor">
+    <section class="card">
+      <h2>看診資訊</h2>
+      <div class="grid">
+        <label>診所／醫院 *<input id="clinic" maxlength="40" placeholder="例：仁愛診所"></label>
+        <label>醫師<input id="doctor" maxlength="40" placeholder="例：王小明"></label>
+        <label>看診日期 *<input id="visit" type="date"></label>
+        <label>開始服藥日 *<input id="start" type="date"></label>
+        <label>病人姓名<input id="patient" maxlength="40"><span class="hint">只印在紙本，不放入 QR code</span></label>
+        <label>病歷號<input id="chart" maxlength="40"><span class="hint">只印在紙本，不放入 QR code</span></label>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <span class="hint">藥單編號：<strong id="rxId"></strong></span>
+        <button type="button" class="link" id="newId">重新產生編號</button>
+      </div>
+      <p class="hint" style="margin:6px 0 0">同一編號的藥單在病人手機只能匯入一次。新的看診請按「新藥單」。</p>
+    </section>
+
+    <section class="card">
+      <h2>用藥</h2>
+      <div id="meds"></div>
+      <button type="button" id="addMed">＋ 新增一項用藥</button>
+    </section>
+  </div>
+
+  <div class="preview-wrap">
+    <h2 class="preview-title">藥單預覽</h2>
+    <div class="status" id="status"></div>
+    <div class="actions">
+      <button type="button" class="primary" id="print" disabled>列印藥單</button>
+      <button type="button" id="copy" disabled>複製藥單代碼</button>
+      <button type="button" id="reset">新藥單</button>
+    </div>
+    <div id="slip" class="slip"><div class="empty">填寫完成後會在這裡顯示藥單與 QR code</div></div>
+  </div>
+</main>
+
+<template id="medTemplate">
+  <div class="med">
+    <div class="med-head">
+      <strong class="med-title"></strong>
+      <button type="button" class="link remove">刪除此項</button>
+    </div>
+    <div class="grid">
+      <label>藥名<input class="name" maxlength="60" placeholder="例：Amlodipine 5mg"></label>
+      <label>每次用量 *<input class="amount" type="number" min="0" step="0.25" value="1"></label>
+      <label>單位 *<input class="unit" list="units" maxlength="10" value="錠"></label>
+      <label>用法 *
+        <select class="meal">
+          <option>飯後</option><option>飯前</option><option>隨餐</option>
+          <option>睡前</option><option>依藥袋指示</option><option>未註明</option>
+        </select>
+      </label>
+      <label>頻率
+        <select class="freq">
+          <option value="QD">QD 每日 1 次</option>
+          <option value="BID">BID 每日 2 次</option>
+          <option value="TID" selected>TID 每日 3 次</option>
+          <option value="QID">QID 每日 4 次</option>
+          <option value="HS">HS 睡前 1 次</option>
+          <option value="PRN">PRN 需要時服用</option>
+          <option value="CUSTOM">自訂時間</option>
+        </select>
+      </label>
+      <label>療程天數 *<input class="days" type="number" min="1" max="365" step="1" value="7"></label>
+    </div>
+    <div class="times-box" style="margin-top:10px">
+      <span class="hint">每日提醒時間（病人之後可在 App 內調整）</span>
+      <div class="times"></div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <label class="inline"><input type="checkbox" class="longTerm"> 長期用藥（不設結束日）</label>
+    </div>
+    <label style="margin-top:10px">醫囑備註<input class="note" maxlength="200" placeholder="例：服藥後多喝水"></label>
+  </div>
+</template>
+<datalist id="units">
+  <option>錠</option><option>顆</option><option>膠囊</option><option>包</option>
+  <option>毫升</option><option>滴</option><option>片</option><option>噴</option>
+</datalist>
+
+<script src="vendor/qrcode.js"></script>
+<script>
+(function () {
+  'use strict';
+  var PREFIX = 'AIGSRX1:';
+  var MEALS = ['飯前', '飯後', '隨餐', '睡前', '依藥袋指示', '未註明'];
+  var PRESETS = {
+    QD: ['08:00'], BID: ['08:00', '20:00'], TID: ['08:00', '13:00', '18:00'],
+    QID: ['08:00', '12:00', '17:00', '21:00'], HS: ['21:00'], PRN: []
+  };
+  var $ = function (id) { return document.getElementById(id); };
+  var medsBox = $('meds');
+  var currentCode = '';
+
+  function today() {
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function newRxId() {
+    var bytes = new Uint8Array(4);
+    crypto.getRandomValues(bytes);
+    var rand = Array.prototype.map.call(bytes, function (b) { return b.toString(16).padStart(2, '0'); }).join('').toUpperCase();
+    return 'RX-' + ($('visit').value || today()).replace(/-/g, '') + '-' + rand;
+  }
+  function escapeHtml(text) {
+    return String(text).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  // 診所與醫師名稱記在本機，下次開啟免重打；讀寫失敗時忽略。
+  function remember(key, value) { try { localStorage.setItem('rx.' + key, value); } catch (e) {} }
+  function recall(key) { try { return localStorage.getItem('rx.' + key) || ''; } catch (e) { return ''; } }
+
+  function addTime(box, value) {
+    var wrap = document.createElement('span');
+    wrap.className = 'row';
+    var input = document.createElement('input');
+    input.type = 'time';
+    input.value = value || '';
+    var remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'link';
+    remove.textContent = '✕';
+    remove.title = '移除此時間';
+    remove.onclick = function () { wrap.remove(); markCustom(box); update(); };
+    wrap.appendChild(input);
+    wrap.appendChild(remove);
+    box.insertBefore(wrap, box.querySelector('.add-time'));
+  }
+  function markCustom(box) {
+    var med = box.closest('.med');
+    var freq = med.querySelector('.freq');
+    if (freq.value !== 'CUSTOM' && freq.value !== 'PRN') freq.value = 'CUSTOM';
+  }
+  function setTimes(med, list) {
+    var box = med.querySelector('.times');
+    box.innerHTML = '';
+    var add = document.createElement('button');
+    add.type = 'button';
+    add.className = 'link add-time';
+    add.textContent = '＋ 時間';
+    add.onclick = function () { addTime(box, ''); markCustom(box); update(); };
+    box.appendChild(add);
+    list.forEach(function (t) { addTime(box, t); });
+  }
+  function applyFreq(med) {
+    var freq = med.querySelector('.freq').value;
+    var prn = freq === 'PRN';
+    med.querySelector('.times-box').style.display = prn ? 'none' : '';
+    if (freq === 'HS') med.querySelector('.meal').value = '睡前';
+    if (PRESETS[freq]) setTimes(med, PRESETS[freq]);
+  }
+  function renumber() {
+    var meds = medsBox.querySelectorAll('.med');
+    meds.forEach(function (med, i) {
+      med.querySelector('.med-title').textContent = '第 ' + (i + 1) + ' 項';
+      med.querySelector('.remove').style.visibility = meds.length > 1 ? '' : 'hidden';
+    });
+  }
+  function addMed() {
+    var med = $('medTemplate').content.firstElementChild.cloneNode(true);
+    medsBox.appendChild(med);
+    med.querySelector('.freq').addEventListener('change', function () { applyFreq(med); update(); });
+    med.querySelector('.longTerm').addEventListener('change', function (e) {
+      med.querySelector('.days').disabled = e.target.checked;
+      update();
+    });
+    med.querySelector('.remove').onclick = function () { med.remove(); renumber(); update(); };
+    applyFreq(med);
+    renumber();
+    update();
+  }
+
+  // 與 App 端 MedicinePrescription.decode 相同的驗證規則。
+  function collect() {
+    var errors = [];
+    var clinic = $('clinic').value.trim();
+    var visit = $('visit').value;
+    var start = $('start').value;
+    if (!clinic) errors.push('請填寫診所／醫院。');
+    if (!visit) errors.push('請選擇看診日期。');
+    if (!start) errors.push('請選擇開始服藥日。');
+    var items = [];
+    var view = [];
+    var meds = medsBox.querySelectorAll('.med');
+    if (meds.length === 0) errors.push('請至少新增一項用藥。');
+    if (meds.length > 20) errors.push('一張藥單最多 20 項用藥。');
+    meds.forEach(function (med, i) {
+      var label = '第 ' + (i + 1) + ' 項：';
+      var name = med.querySelector('.name').value.trim();
+      var amount = Number(med.querySelector('.amount').value);
+      var unit = med.querySelector('.unit').value.trim();
+      var meal = med.querySelector('.meal').value;
+      var prn = med.querySelector('.freq').value === 'PRN';
+      var longTerm = med.querySelector('.longTerm').checked;
+      var daysText = med.querySelector('.days').value;
+      var days = Number(daysText);
+      var note = med.querySelector('.note').value.trim();
+      var times = prn ? [] : Array.prototype.map.call(
+        med.querySelectorAll('.times input[type=time]'), function (el) { return el.value; });
+      if (!(amount > 0) || amount > 1000) errors.push(label + '每次用量需大於 0。');
+      if (!unit) errors.push(label + '請填寫單位。');
+      if (MEALS.indexOf(meal) < 0) errors.push(label + '用法不支援。');
+      if (!prn) {
+        if (times.some(function (t) { return !/^([01]\d|2[0-3]):[0-5]\d$/.test(t); })) errors.push(label + '請填寫完整的提醒時間。');
+        if (times.length < 1 || times.length > 12) errors.push(label + '每日需要 1～12 個提醒時間。');
+        if (new Set(times).size !== times.length) errors.push(label + '提醒時間不能重複。');
+      }
+      if (!longTerm && (!/^\d+$/.test(daysText) || days < 1 || days > 365)) errors.push(label + '療程天數需為 1～365 天。');
+      times.sort();
+      var item = { a: amount, u: unit, w: meal, t: times, p: prn };
+      if (name) item.n = name;
+      if (longTerm) item.lt = true; else item.days = days;
+      if (note) item.note = note;
+      items.push(item);
+      view.push(item);
+    });
+    var payload = { v: 1, id: $('rxId').textContent, c: clinic };
+    var doctor = $('doctor').value.trim();
+    if (doctor) payload.dr = doctor;
+    payload.vd = visit;
+    payload.s = start;
+    payload.m = items;
+    return { errors: errors, payload: payload };
+  }
+
+  function encode(payload) {
+    var bytes = new TextEncoder().encode(JSON.stringify(payload));
+    var binary = '';
+    bytes.forEach(function (b) { binary += String.fromCharCode(b); });
+    return PREFIX + btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  function qrSvg(text) {
+    var qr = qrcode(0, 'M');
+    qr.addData(text, 'Byte');
+    qr.make();
+    var n = qr.getModuleCount();
+    var margin = 4;
+    var size = n + margin * 2;
+    var path = '';
+    for (var r = 0; r < n; r++) {
+      for (var c = 0; c < n; c++) {
+        if (qr.isDark(r, c)) path += 'M' + (c + margin) + ' ' + (r + margin) + 'h1v1h-1z';
+      }
+    }
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + size + ' ' + size +
+      '" shape-rendering="crispEdges" role="img" aria-label="藥單 QR code"><rect width="100%" height="100%" fill="#fff"/><path d="' +
+      path + '" fill="#000"/></svg>';
+  }
+
+  function slipHtml(p, svg) {
+    var rows = p.m.map(function (m) {
+      var amount = (Math.round(m.a * 100) / 100) + ' ' + m.u;
+      return '<tr><td>' + escapeHtml(m.n || '—') + '</td><td>' + escapeHtml(amount) + '</td><td>' + escapeHtml(m.w) +
+        '</td><td>' + (m.p ? '需要時服用' : escapeHtml(m.t.join('、'))) + '</td><td>' +
+        (m.lt ? '長期' : m.days + ' 天') + '</td><td>' + escapeHtml(m.note || '') + '</td></tr>';
+    }).join('');
+    var patient = $('patient').value.trim();
+    var chart = $('chart').value.trim();
+    return '<h3>' + escapeHtml(p.c) + '</h3><div class="sub">用藥說明單</div>' +
+      '<dl><dt>病人</dt><dd>' + escapeHtml(patient || '　') + '</dd><dt>病歷號</dt><dd>' + escapeHtml(chart || '　') + '</dd>' +
+      '<dt>看診日</dt><dd>' + escapeHtml(p.vd) + '</dd><dt>醫師</dt><dd>' + escapeHtml(p.dr || '　') + '</dd>' +
+      '<dt>開始服藥</dt><dd>' + escapeHtml(p.s) + '</dd><dt>藥單編號</dt><dd>' + escapeHtml(p.id) + '</dd></dl>' +
+      '<table><thead><tr><th>藥名</th><th>每次</th><th>用法</th><th>服藥時間</th><th>療程</th><th>備註</th></tr></thead><tbody>' +
+      rows + '</tbody></table>' +
+      '<div class="qr">' + svg + '<div><p><strong>掃描建立服藥提醒</strong></p>' +
+      '<p>開啟「吃藥小助手」App → 新增用藥 → 掃描醫師藥單 QR code。</p>' +
+      '<p>提醒時間可在 App 內依作息調整。</p>' +
+      '<p class="muted">QR code 不含姓名與病歷號。若對用藥有疑問，請詢問醫師或藥師。</p></div></div>';
+  }
+
+  function update() {
+    var result = collect();
+    var status = $('status');
+    var slip = $('slip');
+    currentCode = '';
+    $('print').disabled = true;
+    $('copy').disabled = true;
+    if (result.errors.length) {
+      status.innerHTML = '<div class="errors">尚未完成：<ul>' +
+        result.errors.map(function (e) { return '<li>' + escapeHtml(e) + '</li>'; }).join('') + '</ul></div>';
+      // 不顯示與表單不一致的舊 QR code，避免印出錯誤藥單。
+      if (slip.querySelector('svg')) slip.classList.add('stale');
+      return;
+    }
+    var code = encode(result.payload);
+    if (typeof qrcode !== 'function') {
+      status.innerHTML = '<div class="errors">QR code 元件載入失敗：請確認 doctor_portal/vendor/qrcode.js 與此頁放在一起。</div>';
+      return;
+    }
+    var svg;
+    try {
+      svg = qrSvg(code);
+    } catch (e) {
+      status.innerHTML = '<div class="errors">用藥資料過多，QR code 放不下。請減少用藥項目或縮短備註。</div>';
+      slip.classList.add('stale');
+      return;
+    }
+    slip.classList.remove('stale');
+    slip.innerHTML = slipHtml(result.payload, svg);
+    currentCode = code;
+    $('print').disabled = false;
+    $('copy').disabled = false;
+    status.innerHTML = '<div class="ok">藥單已完成，共 ' + result.payload.m.length + ' 項用藥（QR 內容 ' + code.length + ' 字元）。</div>';
+  }
+
+  function resetForm() {
+    $('visit').value = today();
+    $('start').value = today();
+    $('patient').value = '';
+    $('chart').value = '';
+    $('rxId').textContent = newRxId();
+    medsBox.innerHTML = '';
+    addMed();
+  }
+
+  $('clinic').value = recall('clinic');
+  $('doctor').value = recall('doctor');
+  ['clinic', 'doctor'].forEach(function (id) {
+    $(id).addEventListener('change', function () { remember(id, $(id).value.trim()); });
+  });
+  $('visit').addEventListener('change', function () {
+    // 開始日預設跟著看診日；醫師另外改過開始日就不覆蓋。
+    if (!$('start').dataset.touched) $('start').value = $('visit').value;
+  });
+  $('start').addEventListener('change', function () { $('start').dataset.touched = '1'; });
+  document.querySelector('.editor').addEventListener('input', update);
+  document.querySelector('.editor').addEventListener('change', update);
+  $('addMed').onclick = addMed;
+  $('newId').onclick = function () { $('rxId').textContent = newRxId(); update(); };
+  $('print').onclick = function () { if (currentCode) window.print(); };
+  $('copy').onclick = function () {
+    if (!currentCode) return;
+    navigator.clipboard.writeText(currentCode).then(function () {
+      $('copy').textContent = '已複製';
+      setTimeout(function () { $('copy').textContent = '複製藥單代碼'; }, 1500);
+    }, function () { window.prompt('請手動複製藥單代碼：', currentCode); });
+  };
+  $('reset').onclick = function () {
+    if (confirm('清除目前內容並開立新藥單？（診所與醫師名稱會保留）')) {
+      delete $('start').dataset.touched;
+      resetForm();
+    }
+  };
+  resetForm();
+})();
+</script>
+</body>
+</html>

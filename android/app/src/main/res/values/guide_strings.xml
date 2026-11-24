@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AI 就醫夥伴（掛號引導）專用字串，獨立檔案避免和組員的 strings.xml 衝突 -->
+<resources>
+    <string name="guide_accessibility_label">AI 就醫夥伴（掛號引導）</string>
+    <string name="guide_accessibility_description">開啟後，當您在 App 裡按下「開始引導」，AI 就醫夥伴會讀取 Chrome 掛號網頁上的按鈕與文字，並在畫面上框出下一步該按的地方。只會讀取 Chrome 的畫面，身分證字號、電話與您輸入的內容不會送出，也不會替您點擊或送出掛號。</string>
+</resources>

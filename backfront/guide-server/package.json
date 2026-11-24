@@ -1,0 +1,17 @@
+{
+  "name": "ai-hospital-guide-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI 就醫夥伴：掛號畫面引導後端（獨立於 backfront/Server.js）",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2"
+  }
+}

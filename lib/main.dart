@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; 
 import 'package:firebase_core/firebase_core.dart';
 import 'firstpage.dart';
 import 'secondpage.dart';
@@ -19,9 +20,12 @@ void main() async {
     if (e.toString().contains('duplicate-app')) {
       debugPrint("Firebase 已在其他地方初始化，忽略此重複建立的錯誤。");
     } else {
-      rethrow; // 如果是其他種類的 Firebase 錯誤則依然拋出
+      rethrow;
     }
   }
+
+  // 全域隱藏下方系統導覽列與上方狀態列
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   
   runApp(const MyApp());
 }
@@ -40,14 +44,15 @@ class MyApp extends StatelessWidget {
       home: const LongTermCareLoginScreen(),
       routes: {
         'secondpage': (context) => const HomeScreen(),
-        "firstpage": (context) => const LongTermCareLoginScreen(),
-        "daily_med_news": (context) => const MedNews(), 
-        "Med_news": (context) => const MedNews(),
-        "home": (context) => const HomeScreen(),
-        "hospital_helper": (context) => const HospitalHelperScreen(),
-        "webview": (context) => const HospitalHelperScreen(),
-        "medicine_taker": (context) => const MedicineTakerPage(),
-      },
+        'firstpage': (context) => const LongTermCareLoginScreen(),
+        'daily_med_news': (context) => const MedNews(),
+        'Med_news': (context) => const MedNews(),
+        'home': (context) => const HomeScreen(),
+        'medicine_taker': (context) => const MedicineTakerPage(),
+        'hospital_helper': (context) => const HospitalHelperScreen(),
+        'webview': (context) => const HospitalHelperScreen(),
+},
     );
   }
 }
+
