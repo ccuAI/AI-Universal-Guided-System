@@ -1,0 +1,44 @@
+{
+  "name": "elderly_triage_response",
+  "strict": true,
+  "schema": {
+    "type": "object",
+    "properties": {
+      "severity_level": {
+        "type": "string",
+        "enum": ["LOW", "MODERATE", "EMERGENCY", "UNKNOWN"],
+        "description": "病情嚴重程度分級"
+      },
+      "primary_dept": {
+        "type": "string",
+        "enum": [
+          "GERI", "FM", "MED", "CARD", "GI", "CHEST", "NEPH", "META",
+          "RHEU", "SURG", "DERM", "ORTH", "ENT", "OPH", "NEUR", "PMR",
+          "URO", "OBGY", "PSYC", "DENT", "TCM", "NONE"
+        ],
+        "description": "最適合就診的標準科別代碼"
+      },
+      "fallback_dept": {
+        "type": "string",
+        "enum": ["MED", "FM", "GERI", "NONE"],
+        "description": "偏鄉或無該次專科時的降級備用科別代碼"
+      },
+      "dept_display_name": {
+        "type": "string",
+        "description": "給長輩看的科別中文名稱，急診固定為「急診室」，無效輸入固定為「無法判斷」"
+      },
+      "elder_friendly_reply": {
+        "type": "string",
+        "description": "直接透過TTS唸給長輩聽的簡短溫暖引導語，盡量控制在55字以內，不含醫院名稱"
+      }
+    },
+    "required": [
+      "severity_level",
+      "primary_dept",
+      "fallback_dept",
+      "dept_display_name",
+      "elder_friendly_reply"
+    ],
+    "additionalProperties": false
+  }
+}
