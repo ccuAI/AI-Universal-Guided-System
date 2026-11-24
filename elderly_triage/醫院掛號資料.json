@@ -1,0 +1,104 @@
+{
+  "version": "2026.12.01",
+  "hospitals": {
+    "CYCH": {
+      "hospital_name": "嘉義基督教醫院",
+      "engine_type": "URL_DIRECT",
+      "base_url": "https://www.cych.org.tw/service_detail.aspx",
+      "url_template": "{base_url}?unitNo={dept_code}",
+      "departments": {
+        "MED": { "standard_name": "內科", "hospital_dept_name": "一般內科", "dept_code": "020" },
+        "CHEST": { "standard_name": "胸腔內科", "hospital_dept_name": "胸腔內科", "dept_code": "021" },
+        "GI": { "standard_name": "肝膽腸胃科", "hospital_dept_name": "胃腸肝膽科", "dept_code": "022" },
+        "CARD": { "standard_name": "心臟內科", "hospital_dept_name": "心臟血管內科", "dept_code": "023" },
+        "NEPH": { "standard_name": "腎臟內科", "hospital_dept_name": "腎臟內科", "dept_code": "024" },
+        "RHEU": { "standard_name": "風濕免疫科", "hospital_dept_name": "過敏免疫風濕科", "dept_code": "025" },
+        "META": { "standard_name": "新陳代謝科", "hospital_dept_name": "糖尿病中心", "dept_code": "029A" },
+        "ORTH": { "standard_name": "骨科", "hospital_dept_name": "骨科部", "dept_code": "060" },
+        "OPH": { "standard_name": "眼科", "hospital_dept_name": "眼科", "dept_code": "100" },
+        "DERM": { "standard_name": "皮膚科", "hospital_dept_name": "皮膚科", "dept_code": "110" },
+        "NEUR": { "standard_name": "神經科", "hospital_dept_name": "神經內科", "dept_code": "120" },
+        "PSYC": { "standard_name": "精神科", "hospital_dept_name": "精神科", "dept_code": "130" },
+        "PMR": { "standard_name": "復健科", "hospital_dept_name": "復健科", "dept_code": "140" },
+        "DENT": { "standard_name": "牙科", "hospital_dept_name": "口腔醫學部", "dept_code": "400" },
+        "TCM": { "standard_name": "中醫科", "hospital_dept_name": "中醫部", "dept_code": "620" },
+        "ONC": { "standard_name": "腫瘤科", "hospital_dept_name": "放射腫瘤科", "dept_code": "821" }
+      }
+    },
+    "NTUH_Y0_DOULIU": {
+      "hospital_name": "台大醫院雲林分院（斗六院區）",
+      "engine_type": "URL_DIRECT",
+      "base_url": "https://ntuh.gov.tw",
+      "url_template": "{base_url}?vHospCode=Y0&vDeptCode={dept_code}&showBlock=B",
+      "departments": {
+        "MED": { "standard_name": "內科", "hospital_dept_name": "內科部", "dept_code": "MED" },
+        "SURG": { "standard_name": "外科", "hospital_dept_name": "外科部", "dept_code": "SURG" },
+        "DERM": { "standard_name": "皮膚科", "hospital_dept_name": "皮膚部", "dept_code": "DERM" },
+        "ORTH": { "standard_name": "骨科", "hospital_dept_name": "骨科部", "dept_code": "ORTH" },
+        "ENT": { "standard_name": "耳鼻喉科", "hospital_dept_name": "耳鼻喉部", "dept_code": "ENT" },
+        "OPH": { "standard_name": "眼科", "hospital_dept_name": "眼科部", "dept_code": "OPH" },
+        "NEUR": { "standard_name": "神經科", "hospital_dept_name": "神經部", "dept_code": "NEUR" },
+        "PMR": { "standard_name": "復健科", "hospital_dept_name": "復健部", "dept_code": "PMR" },
+        "URO": { "standard_name": "泌尿科", "hospital_dept_name": "泌尿部", "dept_code": "URO" },
+        "OBGY": { "standard_name": "婦產科", "hospital_dept_name": "婦產部", "dept_code": "OBGY" },
+        "PED": { "standard_name": "小兒科", "hospital_dept_name": "小兒部", "dept_code": "PED" },
+        "PSYC": { "standard_name": "精神科", "hospital_dept_name": "精神部", "dept_code": "PSYC" },
+        "DENT": { "standard_name": "牙科", "hospital_dept_name": "牙科部", "dept_code": "DENT" },
+        "ONC": { "standard_name": "腫瘤科", "hospital_dept_name": "腫瘤醫學部", "dept_code": "ONC" }
+      }
+    },
+    "NTUH_Y0_HUWEI": {
+      "hospital_name": "台大醫院雲林分院（虎尾院區）",
+      "engine_type": "URL_DIRECT",
+      "base_url": "https://ntuh.gov.tw",
+      "url_template": "{base_url}?vHospCode=Y0&vDeptCode={dept_code}&showBlock=B",
+      "departments": {
+        "GERI": { "standard_name": "老年醫學科", "hospital_dept_name": "老年醫學部(虎)", "dept_code": "HDGG" },
+        "FM": { "standard_name": "家醫科", "hospital_dept_name": "社區及家庭醫學部(虎尾)", "dept_code": "HFM" },
+        "MED": { "standard_name": "內科", "hospital_dept_name": "內科部(虎尾)", "dept_code": "HMED" },
+        "SURG": { "standard_name": "外科", "hospital_dept_name": "外科部(虎尾)", "dept_code": "HSUR" },
+        "DERM": { "standard_name": "皮膚科", "hospital_dept_name": "皮膚部(虎尾)", "dept_code": "HDER" },
+        "ORTH": { "standard_name": "骨科", "hospital_dept_name": "骨科部(虎尾)", "dept_code": "HORT" },
+        "ENT": { "standard_name": "耳鼻喉科", "hospital_dept_name": "耳鼻喉部(虎尾)", "dept_code": "HENT" },
+        "OPH": { "standard_name": "眼科", "hospital_dept_name": "眼科部(虎尾)", "dept_code": "HOPH" },
+        "NEUR": { "standard_name": "神經科", "hospital_dept_name": "神經部(虎尾)", "dept_code": "HNEU" },
+        "PMR": { "standard_name": "復健科", "hospital_dept_name": "復健部(虎尾)", "dept_code": "HPMR" },
+        "URO": { "standard_name": "泌尿科", "hospital_dept_name": "泌尿部(虎尾)", "dept_code": "HURO" },
+        "OBGY": { "standard_name": "婦產科", "hospital_dept_name": "婦產部(虎尾)", "dept_code": "HOBG" },
+        "PED": { "standard_name": "小兒科", "hospital_dept_name": "小兒部(虎尾)", "dept_code": "HPED" },
+        "PSYC": { "standard_name": "精神科", "hospital_dept_name": "精神部(虎尾)", "dept_code": "HPSY" },
+        "DENT": { "standard_name": "牙科", "hospital_dept_name": "牙科部(虎尾)", "dept_code": "HDEN" },
+        "ONC": { "standard_name": "腫瘤科", "hospital_dept_name": "腫瘤醫學部(虎尾)", "dept_code": "HONC" }
+      }
+    },
+    "TZUCHI_DL": {
+      "hospital_name": "大林慈濟醫院",
+      "engine_type": "RPA_CLICK",
+      "entry_url": "https://tzuchi.com.tw",
+      "departments": {
+        "GERI": { "standard_name": "老年醫學科", "hospital_dept_name": "老年醫學科", "target_id": "ctl00_ContentPlaceHolder1_lbtnSec32", "fallback_text": "老年醫學科" },
+        "FM": { "standard_name": "家醫科", "hospital_dept_name": "家庭醫學科", "target_id": "ctl00_ContentPlaceHolder1_lbtnSec25", "fallback_text": "家庭醫學科" },
+        "MED": { "standard_name": "內科", "hospital_dept_name": "內科", "target_id": "ctl00_ContentPlaceHolder1_lbtnSec36", "fallback_text": "內科" },
+        "CARD": { "standard_name": "心臟內科", "hospital_dept_name": "心臟內科", "target_id": "ctl00_ContentPlaceHolder1_lbtnSec12", "fallback_text": "心臟內科" },
+        "GI": { "standard_name": "肝膽腸胃科", "hospital_dept_name": "肝膽腸胃內科", "target_id": "ctl00_ContentPlaceHolder1_lbtnSec14", "fallback_text": "肝膽腸胃內科" },
+        "CHEST": { "standard_name": "胸腔內科", "hospital_dept_name": "胸腔內科", "target_id": "ctl00_ContentPlaceHolder1_lbtnSec26", "fallback_text": "胸腔內科" },
+        "NEPH": { "standard_name": "腎臟內科", "hospital_dept_name": "腎臟內科", "target_id": "ctl00_ContentPlaceHolder1_lbtnSec28", "fallback_text": "腎臟內科" },
+        "META": { "standard_name": "新陳代謝科", "hospital_dept_name": "新陳代謝科", "target_id": "ctl00_ContentPlaceHolder1_lbtnSec9", "fallback_text": "新陳代謝科" },
+        "RHEU": { "standard_name": "風濕免疫科", "hospital_dept_name": "過敏免疫風濕科", "target_id": "ctl00_ContentPlaceHolder1_lbtnSec29", "fallback_text": "過敏免疫風濕科" },
+        "SURG": { "standard_name": "外科", "hospital_dept_name": "一般外科", "target_id": "ctl00_ContentPlaceHolder1_lbtnSec1", "fallback_text": "一般外科" },
+        "DERM": { "standard_name": "皮膚科", "hospital_dept_name": "皮膚科", "target_id": "ctl00_ContentPlaceHolder1_lbtnSec13", "fallback_text": "皮膚科" },
+        "ORTH": { "standard_name": "骨科", "hospital_dept_name": "骨科", "target_id": "ctl00_ContentPlaceHolder1_lbtnSec17", "fallback_text": "骨科" },
+        "ENT": { "standard_name": "耳鼻喉科", "hospital_dept_name": "耳鼻喉頭頸外科", "target_id": "ctl00_ContentPlaceHolder1_lbtnSec23", "fallback_text": "耳鼻喉頭頸外科" },
+        "OPH": { "standard_name": "眼科", "hospital_dept_name": "眼科", "target_id": "ctl00_ContentPlaceHolder1_lbtnSec8", "fallback_text": "眼科" },
+        "NEUR": { "standard_name": "神經科", "hospital_dept_name": "神經科", "target_id": "ctl00_ContentPlaceHolder1_lbtnSec16", "fallback_text": "神經科" },
+        "PMR": { "standard_name": "復健科", "hospital_dept_name": "復健科", "target_id": "ctl00_ContentPlaceHolder1_lbtnSec18", "fallback_text": "復健科" },
+        "URO": { "standard_name": "泌尿科", "hospital_dept_name": "泌尿科", "target_id": "ctl00_ContentPlaceHolder1_lbtnSec15", "fallback_text": "泌尿科" },
+        "OBGY": { "standard_name": "婦產科", "hospital_dept_name": "婦產科", "target_id": "ctl00_ContentPlaceHolder1_lbtnSec27", "fallback_text": "婦產科" },
+        "PED": { "standard_name": "小兒科", "hospital_dept_name": "兒童醫學部", "target_id": "ctl00_ContentPlaceHolder1_lbtnSec11", "fallback_text": "兒童醫學部" },
+        "PSYC": { "standard_name": "精神科", "hospital_dept_name": "身心醫學科", "target_id": "ctl00_ContentPlaceHolder1_lbtnSec24", "fallback_text": "身心醫學科" },
+        "DENT": { "standard_name": "牙科", "hospital_dept_name": "口腔醫學部", "target_id": "ctl00_ContentPlaceHolder1_lbtnSec3", "fallback_text": "口腔醫學部" },
+        "TCM": { "standard_name": "中醫科", "hospital_dept_name": "中醫部", "target_id": "ctl00_ContentPlaceHolder1_lbtnSec21", "fallback_text": "中醫部" }
+      }
+    }
+  }
+}
