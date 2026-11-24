@@ -67,6 +67,32 @@
         </activity>
         <!-- =================================================================================== -->
 
+        <!-- ==================== AI 就醫夥伴：掛號引導無障礙服務 ==================== -->
+        <service
+            android:name=".guide.GuideAccessibilityService"
+            android:label="@string/guide_accessibility_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/guide_accessibility_config" />
+        </service>
+
+        <!-- AI 就醫夥伴：引導途中的對話視窗（獨立 task，關閉後回到 Chrome） -->
+        <activity
+            android:name=".guide.GuideChatActivity"
+            android:exported="false"
+            android:theme="@style/GuideChatTheme"
+            android:taskAffinity="com.med.myproject.guidechat"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|uiMode|density|fontScale"
+            android:windowSoftInputMode="adjustResize|stateHidden" />
+        <!-- =================================================================================== -->
+
 
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

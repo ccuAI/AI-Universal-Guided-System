@@ -4,4 +4,7 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- AI 就醫夥伴：debug 版允許以 http 連到本機後端（見 res/xml/guide_network_security_config.xml） -->
+    <application android:networkSecurityConfig="@xml/guide_network_security_config" />
 </manifest>
