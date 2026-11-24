@@ -15,10 +15,14 @@ data class GuideAction(
     val targetId: Int?,
     val message: String,
     val confidence: Double,
+    /** AI 讀完整個網頁後，對這一頁的摘要（在做什麼、重要資訊）。 */
+    val pageSummary: String = "",
+    /** 讓使用者自己選時，選項在網頁上的位置（只用來提示往哪邊滑）。 */
+    val focusId: Int? = null,
 )
 
-/** 對話視窗的 AI 回覆；newGoal 不為 null 代表長輩修改了需求。 */
-data class ChatReply(val reply: String, val newGoal: String?)
+/** 對話視窗的 AI 回覆；newGoal 不為 null 代表長輩修改了需求；switchHospital 代表要換醫院（回 App 重新選）。 */
+data class ChatReply(val reply: String, val newGoal: String?, val switchHospital: Boolean = false)
 
 /**
  * 呼叫 AI 就醫夥伴專用的後端（backfront/guide-server）。
@@ -43,6 +47,7 @@ class GuideApiClient {
                 ChatReply(
                     reply = json.optString("reply", ""),
                     newGoal = if (json.isNull("new_goal")) null else json.optString("new_goal").ifBlank { null },
+                    switchHospital = json.optBoolean("switch_hospital", false),
                 )
             }
             mainHandler.post { callback(result) }
@@ -64,6 +69,8 @@ class GuideApiClient {
             targetId = targetId,
             message = json.optString("message", ""),
             confidence = json.optDouble("confidence", 1.0),
+            pageSummary = json.optString("page_summary", ""),
+            focusId = if (!json.has("focus_id") || json.isNull("focus_id")) null else json.optInt("focus_id"),
         )
     }
 
@@ -75,6 +82,8 @@ class GuideApiClient {
             conn.readTimeout = 30_000
             conn.doOutput = true
             conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            // 雲端伺服器的通行碼
+            if (GuideSession.accessToken.isNotEmpty()) conn.setRequestProperty("X-Guide-Token", GuideSession.accessToken)
             conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
 
             val code = conn.responseCode

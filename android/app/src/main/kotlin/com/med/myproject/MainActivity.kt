@@ -7,7 +7,6 @@ import io.flutter.embedding.engine.FlutterEngine
 class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        // AI 就醫夥伴（掛號引導）
         GuideChannel.register(this, flutterEngine)
     }
 }

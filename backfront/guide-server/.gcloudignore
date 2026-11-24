@@ -1,0 +1,10 @@
+# 部署到 Google Cloud Run 時不要上傳的檔案
+# 金鑰改用 Cloud Run 的環境變數設定，絕對不要把 .env 傳上去
+.env
+.env.*
+!.env.example
+node_modules/
+.gcloudignore
+.gitignore
+deploy-cloudrun.ps1
+README.md

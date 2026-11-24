@@ -18,7 +18,7 @@ if (keystorePropertiesFile.exists()) {
     }
 }
 
-// 檢查正式版簽署資料是否完整
+// 檢查正式版簽署資料
 val hasReleaseKey = listOf(
     "keyAlias",
     "keyPassword",
@@ -29,13 +29,15 @@ val hasReleaseKey = listOf(
 }
 
 android {
-    
     namespace = "com.med.myproject"
 
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // 新增：服藥通知套件所需設定
+        isCoreLibraryDesugaringEnabled = true
+
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -43,7 +45,6 @@ android {
     defaultConfig {
         applicationId = "com.med.myproject"
 
-        // 保留 LINE SDK 所需的最低 Android 版本設定
         minSdk = 24
 
         targetSdk = flutter.targetSdkVersion
@@ -69,7 +70,6 @@ android {
             signingConfig = if (hasReleaseKey) {
                 signingConfigs.getByName("release")
             } else {
-                // 僅供本機測試
                 signingConfigs.getByName("debug")
             }
         }
@@ -80,7 +80,6 @@ android {
     }
 }
 
-// Kotlin JVM 版本
 kotlin {
     compilerOptions {
         jvmTarget.set(
@@ -91,4 +90,9 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+// 新增：Desugaring 相依套件
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

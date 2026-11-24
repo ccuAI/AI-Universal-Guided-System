@@ -107,6 +107,12 @@ class GuideChatActivity : Activity() {
             result
                 .onSuccess { reply ->
                     addBubble(GuideSession.ChatMessage("assistant", reply.reply), save = true)
+                    if (reply.switchHospital) {
+                        addBubble(GuideSession.ChatMessage("system", "正在帶您回到 App 重新選擇醫院…"), save = false)
+                        input.isEnabled = false
+                        messageList.postDelayed({ returnToAppToSwitchHospital() }, 1_800L)
+                        return@onSuccess
+                    }
                     reply.newGoal?.let { goal ->
                         GuideSession.updateGoal(goal)
                         updateGoalView()
@@ -116,6 +122,7 @@ class GuideChatActivity : Activity() {
                 .onFailure {
                     val detail = it.message.orEmpty()
                     val message = when {
+                        detail.startsWith("HTTP 401") -> "引導伺服器的通行碼不對，請回 App 的進階設定檢查。"
                         detail.startsWith("HTTP 429") -> "AI 助手現在太忙了，請等幾秒再送一次。"
                         detail.startsWith("HTTP 5") -> "AI 助手暫時出了點問題，請稍後再試。"
                         else -> "暫時連不上 AI 助手，請檢查網路後再試。"
@@ -123,6 +130,25 @@ class GuideChatActivity : Activity() {
                     addBubble(GuideSession.ChatMessage("system", message), save = false)
                 }
         }
+    }
+
+    /** 換醫院：結束這次引導，回到 App 的 AI 就醫夥伴頁面重新選擇醫院。 */
+    private fun returnToAppToSwitchHospital() {
+        if (isFinishing || isDestroyed) return
+        GuideSession.returnReason = "switch_hospital"
+        GuideSession.stop()
+        GuideAccessibilityService.instance?.onSessionStopped()
+
+        // 和從桌面點 App 圖示一樣：把原本的 App 畫面（AI 就醫夥伴頁）帶回前景
+        packageManager.getLaunchIntentForPackage(packageName)?.let { launch ->
+            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+            try {
+                startActivity(launch)
+            } catch (e: ActivityNotFoundException) {
+                Toast.makeText(this, "請打開 App 重新選擇醫院", Toast.LENGTH_LONG).show()
+            }
+        }
+        finish()
     }
 
     private fun setSending(value: Boolean) {

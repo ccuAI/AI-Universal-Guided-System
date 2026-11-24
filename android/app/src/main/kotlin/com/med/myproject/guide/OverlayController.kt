@@ -13,22 +13,24 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
-import android.text.Layout
-import android.text.StaticLayout
-import android.text.TextPaint
 import android.util.TypedValue
+import android.view.GestureDetector
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.TextView
+import kotlin.math.abs
+import kotlin.math.max
 import kotlin.math.min
 
 /**
  * 在 Chrome 上方畫引導：
- * - 全螢幕、不攔截觸控的畫框層（HighlightView）
- * - 可拖曳的小控制列：「對話」「重看」「停止引導」
+ * - 全螢幕、不攔截觸控的畫框層（HighlightView）：只畫橘色框
+ * - 提示泡泡（獨立的小視窗）：可以拖曳移動、點兩下恢復自動擺放、可以暫時隱藏
+ * - 可拖曳的小控制列：「對話」「重看」「隱藏提示」「停止」
  *
  * 使用 TYPE_ACCESSIBILITY_OVERLAY，不需要另外申請懸浮視窗權限。只能在主執行緒呼叫。
  */
@@ -42,22 +44,45 @@ class OverlayController(
     private val density = service.resources.displayMetrics.density
 
     private var highlightView: HighlightView? = null
+
+    private var bubbleView: TextView? = null
+    private var bubbleParams: WindowManager.LayoutParams? = null
+
     private var controlView: View? = null
     private var controlParams: WindowManager.LayoutParams? = null
+    private var toggleButton: TextView? = null
+
+    /** AI 對這一頁的摘要：目前不顯示在畫面上（只給 AI 參考）。 */
+    private var pageSummary = ""
+
+    /** 使用者按了「隱藏提示」。 */
+    private var bubbleHidden = false
+
+    /** 使用者拖曳過提示泡泡：之後的提示都留在他放的位置，點兩下才恢復自動擺放。 */
+    private var bubbleMovedByUser = false
+
+    private var lastAnchor: Rect? = null
+
+    fun setPageSummary(summary: String) {
+        pageSummary = summary.trim()
+    }
 
     /** 框出目標並顯示提示。 */
     fun showTarget(bounds: Rect, message: String) {
-        ensureHighlight().show(bounds, message)
+        ensureHighlight().show(bounds)
+        showBubble(compose(message), bounds)
     }
 
     /** 只顯示提示文字（沒有要框的目標）。 */
     fun showMessage(message: String) {
-        ensureHighlight().show(null, message)
+        highlightView?.clear()
+        showBubble(compose(message), null)
     }
 
     /** 隱藏框和提示，但保留控制列（例如離開 Chrome 時）。 */
     fun hideHighlight() {
         highlightView?.clear()
+        bubbleView?.visibility = View.GONE
     }
 
     fun showControls() {
@@ -82,11 +107,155 @@ class OverlayController(
             it.clear()
             runCatching { windowManager.removeView(it) }
         }
+        bubbleView?.let { runCatching { windowManager.removeView(it) } }
         controlView?.let { runCatching { windowManager.removeView(it) } }
         highlightView = null
+        bubbleView = null
+        bubbleParams = null
         controlView = null
         controlParams = null
+        toggleButton = null
+        bubbleHidden = false
+        bubbleMovedByUser = false
+        lastAnchor = null
     }
+
+    // ───────────────────────── 提示泡泡 ─────────────────────────
+
+    /** 提示泡泡只顯示要做的操作（這一頁的摘要只給 AI 參考，不顯示）。 */
+    private fun compose(text: String): CharSequence = text
+
+    private fun showBubble(text: CharSequence, anchor: Rect?) {
+        lastAnchor = anchor?.let { Rect(it) }
+        val view = ensureBubble()
+        view.text = text
+        if (bubbleHidden || text.isEmpty()) {
+            view.visibility = View.GONE
+            return
+        }
+        view.visibility = View.VISIBLE
+        if (!bubbleMovedByUser) placeBubble(view, anchor)
+    }
+
+    /** 自動擺放：有目標就放在框的下方（放不下就放上方），沒有目標就放在畫面下方。 */
+    private fun placeBubble(view: TextView, anchor: Rect?) {
+        val params = bubbleParams ?: return
+        val metrics = service.resources.displayMetrics
+        val screenW = metrics.widthPixels
+        val screenH = metrics.heightPixels
+        val margin = dp(16)
+        val maxWidth = min(screenW - 2 * margin, dp(420))
+        view.maxWidth = maxWidth
+        view.measure(
+            View.MeasureSpec.makeMeasureSpec(maxWidth, View.MeasureSpec.AT_MOST),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+        )
+        val w = view.measuredWidth
+        val h = view.measuredHeight
+        val gap = dp(20)
+
+        val top = if (anchor != null) {
+            val below = anchor.bottom + gap
+            if (below + h < screenH - margin) below else anchor.top - gap - h
+        } else {
+            screenH - h - dp(150) // 避開 Chrome 底部工具列
+        }
+        val left = if (anchor != null) anchor.centerX() - w / 2 else (screenW - w) / 2
+
+        params.x = left.coerceIn(margin, max(margin, screenW - w - margin))
+        params.y = top.coerceIn(margin, max(margin, screenH - h - margin))
+        runCatching { windowManager.updateViewLayout(view, params) }
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    private fun ensureBubble(): TextView {
+        bubbleView?.let { return it }
+        val view = TextView(service).apply {
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+            typeface = Typeface.DEFAULT_BOLD
+            setLineSpacing(0f, 1.15f)
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(16).toFloat()
+                setColor(Color.parseColor("#F2202A44"))
+            }
+            elevation = dp(6).toFloat()
+            visibility = View.GONE
+        }
+        val params = baseParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+        }
+
+        // 按住拖曳移動；點兩下恢復自動擺放
+        val touchSlop = ViewConfiguration.get(service).scaledTouchSlop
+        val doubleTap = GestureDetector(
+            service,
+            object : GestureDetector.SimpleOnGestureListener() {
+                override fun onDoubleTap(e: MotionEvent): Boolean {
+                    bubbleMovedByUser = false
+                    placeBubble(view, lastAnchor)
+                    return true
+                }
+            },
+        )
+        var startX = 0
+        var startY = 0
+        var touchX = 0f
+        var touchY = 0f
+        var dragging = false
+        view.setOnTouchListener { _, event ->
+            doubleTap.onTouchEvent(event)
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    startX = params.x
+                    startY = params.y
+                    touchX = event.rawX
+                    touchY = event.rawY
+                    dragging = false
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = event.rawX - touchX
+                    val dy = event.rawY - touchY
+                    if (!dragging && (abs(dx) > touchSlop || abs(dy) > touchSlop)) dragging = true
+                    if (dragging) {
+                        params.x = startX + dx.toInt()
+                        params.y = startY + dy.toInt()
+                        runCatching { windowManager.updateViewLayout(view, params) }
+                    }
+                }
+                MotionEvent.ACTION_UP -> if (dragging) bubbleMovedByUser = true
+            }
+            true
+        }
+
+        windowManager.addView(view, params)
+        bubbleView = view
+        bubbleParams = params
+        bringControlsToFront()
+        return view
+    }
+
+    private fun toggleBubble() {
+        bubbleHidden = !bubbleHidden
+        toggleButton?.text = if (bubbleHidden) "顯示提示" else "隱藏提示"
+        bubbleView?.let { view ->
+            if (bubbleHidden || view.text.isNullOrEmpty()) {
+                view.visibility = View.GONE
+            } else {
+                view.visibility = View.VISIBLE
+                if (!bubbleMovedByUser) placeBubble(view, lastAnchor)
+            }
+        }
+    }
+
+    // ───────────────────────── 畫框層 ─────────────────────────
 
     private fun ensureHighlight(): HighlightView {
         highlightView?.let { return it }
@@ -102,12 +271,20 @@ class OverlayController(
         windowManager.addView(view, params)
         highlightView = view
 
-        // 控制列要蓋在畫框層上面：重新加入一次
+        // 提示泡泡和控制列要蓋在畫框層上面：重新加入一次
+        bubbleView?.let { bv ->
+            runCatching { windowManager.removeView(bv) }
+            windowManager.addView(bv, bubbleParams)
+        }
+        bringControlsToFront()
+        return view
+    }
+
+    private fun bringControlsToFront() {
         controlView?.let { cv ->
             runCatching { windowManager.removeView(cv) }
             windowManager.addView(cv, controlParams)
         }
-        return view
     }
 
     private fun baseParams(width: Int, height: Int, flags: Int) = WindowManager.LayoutParams(
@@ -122,6 +299,8 @@ class OverlayController(
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
     }
+
+    // ───────────────────────── 控制列 ─────────────────────────
 
     @SuppressLint("ClickableViewAccessibility", "SetTextI18n")
     private fun buildControlView(): View {
@@ -147,6 +326,9 @@ class OverlayController(
         bar.addView(handle)
         bar.addView(controlButton("對話", "#FF2196F3") { onChat() })
         bar.addView(controlButton("重看", "#FF2196F3") { onRetry() })
+        val toggle = controlButton(if (bubbleHidden) "顯示提示" else "隱藏提示", "#FF2196F3") { toggleBubble() }
+        toggleButton = toggle
+        bar.addView(toggle)
         bar.addView(controlButton("停止", "#FFF44336") { onStop() })
 
         // 拖曳把手移動整個控制列，避免擋到網頁按鈕
@@ -194,14 +376,13 @@ class OverlayController(
     private fun dp(value: Int): Int = (value * density).toInt()
 }
 
-/** 畫框 + 提示泡泡的全螢幕透明 View。 */
+/** 只畫橘色框（會呼吸閃爍）的全螢幕透明 View，不攔截觸控。 */
 @SuppressLint("ViewConstructor")
 private class HighlightView(context: Context) : View(context) {
 
     private val density = resources.displayMetrics.density
 
     private var target: Rect? = null
-    private var message: String = ""
     private var pulse = 0f
 
     private val boxPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -212,14 +393,6 @@ private class HighlightView(context: Context) : View(context) {
     private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         color = Color.parseColor("#FFFFAB40")
-    }
-    private val bubblePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#F2202A44")
-    }
-    private val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE
-        textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 22f, resources.displayMetrics)
-        typeface = Typeface.DEFAULT_BOLD
     }
 
     private val animator = ValueAnimator.ofFloat(0f, 1f).apply {
@@ -232,9 +405,8 @@ private class HighlightView(context: Context) : View(context) {
         }
     }
 
-    fun show(bounds: Rect?, text: String) {
+    fun show(bounds: Rect?) {
         target = bounds?.let { Rect(it) }
-        message = text
         if (target != null) {
             if (!animator.isStarted) animator.start()
         } else {
@@ -245,7 +417,6 @@ private class HighlightView(context: Context) : View(context) {
 
     fun clear() {
         target = null
-        message = ""
         animator.cancel()
         invalidate()
     }
@@ -257,64 +428,19 @@ private class HighlightView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+        val t = target ?: return
         // 節點座標是「螢幕座標」，扣掉這個視窗在螢幕上的位置才能對齊
         val origin = IntArray(2)
         getLocationOnScreen(origin)
-
-        var box: RectF? = null
-        target?.let { t ->
-            val pad = 6 * density
-            box = RectF(t).apply {
-                offset(-origin[0].toFloat(), -origin[1].toFloat())
-                inset(-pad, -pad)
-            }
-            val radius = 12 * density
-            glowPaint.strokeWidth = (8 + 10 * pulse) * density
-            glowPaint.alpha = (160 * (1 - pulse)).toInt()
-            canvas.drawRoundRect(box!!, radius, radius, glowPaint)
-            canvas.drawRoundRect(box!!, radius, radius, boxPaint)
+        val pad = 6 * density
+        val box = RectF(t).apply {
+            offset(-origin[0].toFloat(), -origin[1].toFloat())
+            inset(-pad, -pad)
         }
-
-        if (message.isNotEmpty()) drawBubble(canvas, box)
-    }
-
-    private fun drawBubble(canvas: Canvas, box: RectF?) {
-        val margin = 16 * density
-        val padding = 16 * density
-        val maxBubbleWidth = min(width - 2 * margin, 420 * density)
-        val textWidth = (maxBubbleWidth - 2 * padding).toInt().coerceAtLeast(1)
-
-        val layout = StaticLayout.Builder
-            .obtain(message, 0, message.length, textPaint, textWidth)
-            .setAlignment(Layout.Alignment.ALIGN_NORMAL)
-            .setLineSpacing(0f, 1.15f)
-            .build()
-
-        var contentWidth = 0f
-        for (i in 0 until layout.lineCount) contentWidth = maxOf(contentWidth, layout.getLineWidth(i))
-        val bubbleW = contentWidth + 2 * padding
-        val bubbleH = layout.height + 2 * padding
-        val gap = 14 * density
-
-        val preferredTop = if (box != null) {
-            val below = box.bottom + gap
-            if (below + bubbleH < height - margin) below else (box.top - gap - bubbleH)
-        } else {
-            height - bubbleH - 150 * density // 沒有目標時放在下方，避開 Chrome 底部工具列
-        }
-        val top = preferredTop.coerceIn(margin, (height - bubbleH - margin).coerceAtLeast(margin))
-
-        val left = if (box != null) {
-            (box.centerX() - bubbleW / 2).coerceIn(margin, (width - bubbleW - margin).coerceAtLeast(margin))
-        } else {
-            (width - bubbleW) / 2
-        }
-
-        val rect = RectF(left, top, left + bubbleW, top + bubbleH)
-        canvas.drawRoundRect(rect, 16 * density, 16 * density, bubblePaint)
-        canvas.save()
-        canvas.translate(left + padding, top + padding)
-        layout.draw(canvas)
-        canvas.restore()
+        val radius = 12 * density
+        glowPaint.strokeWidth = (8 + 10 * pulse) * density
+        glowPaint.alpha = (160 * (1 - pulse)).toInt()
+        canvas.drawRoundRect(box, radius, radius, glowPaint)
+        canvas.drawRoundRect(box, radius, radius, boxPaint)
     }
 }

@@ -4,7 +4,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class ApiConfig {
 
-  static String get gptApiKey => dotenv.env['GPT_API_KEY'] ?? '';
+  static String get gptApiKey => dotenv.env['OPENAI_API_KEY'] ?? '';
 }
 
 class GPTService {  
@@ -35,7 +35,7 @@ class GPTService {
           'messages': [
             {
               'role': 'system', 
-              'content': '你是一個專業的醫療AI助手。請針對使用者提供的醫療新知進行嚴謹的分析，並提取出核心摘要、細節整理與結論。講述口吻請以可以讓老人家了解並不產生歧異的前提為準。'
+              'content': '你是一個專業的醫療AI助手。請針對使用者提供的醫療新知進行嚴謹的分析，並提取出核心摘要、細節整理與結論。講述口吻請以可以讓老人家了解並不產生歧異的前提為準。以關懷老人家的口氣為主'
             },
             {'role': 'user', 'content': userMessage}
           ],

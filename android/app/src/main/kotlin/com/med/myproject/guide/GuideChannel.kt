@@ -28,6 +28,11 @@ object GuideChannel {
 
                 "isGuideRunning" -> result.success(GuideSession.isRunning)
 
+                "consumeReturnReason" -> {
+                    result.success(GuideSession.returnReason)
+                    GuideSession.returnReason = null
+                }
+
                 "openAccessibilitySettings" -> {
                     result.success(open(activity, Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)))
                 }
@@ -44,6 +49,7 @@ object GuideChannel {
                     val goal = call.argument<String>("goal").orEmpty().trim()
                     val url = call.argument<String>("url").orEmpty().trim()
                     val backendUrl = call.argument<String>("backendUrl").orEmpty().trim()
+                    val accessToken = call.argument<String>("accessToken").orEmpty().trim()
 
                     when {
                         !isServiceEnabled(activity) ->
@@ -51,7 +57,7 @@ object GuideChannel {
                         goal.isEmpty() || url.isEmpty() || backendUrl.isEmpty() ->
                             result.error("BAD_ARGS", "goal、url、backendUrl 都必須提供", null)
                         else -> {
-                            GuideSession.start(goal, backendUrl)
+                            GuideSession.start(goal, backendUrl, accessToken)
                             GuideAccessibilityService.instance?.onSessionStarted()
                             val inChrome = openInBrowser(activity, url)
                             result.success(mapOf("openedInChrome" to inChrome))

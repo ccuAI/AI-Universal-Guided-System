@@ -20,20 +20,28 @@ class HospitalHelperScreen extends StatefulWidget {
 
 class _HospitalHelperScreenState extends State<HospitalHelperScreen>
     with WidgetsBindingObserver {
-  // 預設連到電腦上的 guide-server（實機請先執行 adb reverse tcp:3001 tcp:3001）
-  static const String _defaultBackendUrl = 'http://127.0.0.1:3001';
+  // 引導伺服器預設網址：
+  // - 部署到 Google Cloud Run 之後，改成 Cloud Run 給的網址（https://…run.app），組員安裝後就能直接用
+  // - 還沒部署時用電腦上的伺服器（實機請先執行 adb reverse tcp:3001 tcp:3001）
+  static const String _defaultBackendUrl = 'https://ai-hospital-guide-ttpkeycvfq-de.a.run.app';
+  static const String _localBackendUrl = 'http://127.0.0.1:3001';
+
+  // 雲端伺服器的通行碼（伺服器有設定 GUIDE_ACCESS_TOKEN 時才需要；沒設定就留空）
+  static const String _defaultAccessToken = 'D32VBHxyFeiUBKWPBch6gALGp5SB1cGE';
 
   static const String _prefHospital = 'guide_hospital';
   static const String _prefUrl = 'guide_url';
   static const String _prefDepartment = 'guide_department';
   static const String _prefTime = 'guide_time';
   static const String _prefBackend = 'guide_backend_url';
+  static const String _prefToken = 'guide_access_token';
 
   final _hospitalController = TextEditingController();
   final _urlController = TextEditingController();
   final _departmentController = TextEditingController();
   final _timeController = TextEditingController();
   final _backendController = TextEditingController(text: _defaultBackendUrl);
+  final _tokenController = TextEditingController(text: _defaultAccessToken);
 
   bool _loading = true;
   bool _serviceEnabled = false;
@@ -59,6 +67,7 @@ class _HospitalHelperScreenState extends State<HospitalHelperScreen>
     _departmentController.dispose();
     _timeController.dispose();
     _backendController.dispose();
+    _tokenController.dispose();
     super.dispose();
   }
 
@@ -69,21 +78,44 @@ class _HospitalHelperScreenState extends State<HospitalHelperScreen>
   }
 
   Future<void> _init() async {
-    final prefs = await SharedPreferences.getInstance();
-    _hospitalController.text = prefs.getString(_prefHospital) ?? '';
-    _urlController.text = prefs.getString(_prefUrl) ?? '';
-    _departmentController.text = prefs.getString(_prefDepartment) ?? '';
-    _timeController.text = prefs.getString(_prefTime) ?? '';
-    _backendController.text = prefs.getString(_prefBackend) ?? _defaultBackendUrl;
+    // 組員版本：每一步都有逾時保護，出錯也一定會關掉「載入中」
+    try {
+      final prefs = await SharedPreferences.getInstance()
+          .timeout(const Duration(seconds: 5));
 
-    if (_isAndroid) {
-      try {
-        _sdkInt = await GuideChannel.sdkInt();
-      } on PlatformException catch (e) {
-        debugPrint('讀取 Android 版本失敗: $e');
+      if (!mounted) return;
+
+      _hospitalController.text = prefs.getString(_prefHospital) ?? '';
+      _urlController.text = prefs.getString(_prefUrl) ?? '';
+      _departmentController.text = prefs.getString(_prefDepartment) ?? '';
+      _timeController.text = prefs.getString(_prefTime) ?? '';
+      // 之前存的是本機網址、而預設已經改成雲端時，改用新的預設（模擬器的 10.0.2.2 等自訂值保留）
+      final savedBackend = prefs.getString(_prefBackend);
+      _backendController.text = (savedBackend == null || savedBackend.isEmpty || savedBackend == _localBackendUrl)
+          ? _defaultBackendUrl
+          : savedBackend;
+      // 之前存的是空的通行碼（舊版沒有通行碼）時，改用預設通行碼
+      final savedToken = prefs.getString(_prefToken);
+      _tokenController.text = (savedToken == null || savedToken.isEmpty) ? _defaultAccessToken : savedToken;
+
+      if (_isAndroid) {
+        try {
+          _sdkInt = await GuideChannel.sdkInt()
+              .timeout(const Duration(seconds: 5));
+        } on PlatformException catch (e) {
+          debugPrint('讀取 Android 版本失敗: $e');
+        }
+      }
+
+      await _refreshStatus()
+          .timeout(const Duration(seconds: 5));
+    } catch (e) {
+      debugPrint('AI 就醫夥伴初始化失敗：$e');
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
       }
     }
-    await _refreshStatus();
   }
 
   Future<void> _refreshStatus() async {
@@ -94,12 +126,14 @@ class _HospitalHelperScreenState extends State<HospitalHelperScreen>
     try {
       final enabled = await GuideChannel.isServiceEnabled();
       final running = await GuideChannel.isGuideRunning();
+      final returnReason = await GuideChannel.consumeReturnReason();
       if (!mounted) return;
       setState(() {
         _serviceEnabled = enabled;
         _guideRunning = running;
         _loading = false;
       });
+      if (returnReason == 'switch_hospital') await _resetForNewHospital();
     } on PlatformException catch (e) {
       debugPrint('檢查引導狀態失敗: $e');
       if (mounted) setState(() => _loading = false);
@@ -113,13 +147,25 @@ class _HospitalHelperScreenState extends State<HospitalHelperScreen>
     await prefs.setString(_prefDepartment, _departmentController.text.trim());
     await prefs.setString(_prefTime, _timeController.text.trim());
     await prefs.setString(_prefBackend, _backendController.text.trim());
+    await prefs.setString(_prefToken, _tokenController.text.trim());
   }
 
-  /// 沒填網址時，用 Google 搜尋「醫院名稱 網路掛號」，再由 AI 引導點進官方網站。
+  /// 引導途中說要換醫院：清空表單，請使用者重新輸入醫院。
+  Future<void> _resetForNewHospital() async {
+    _hospitalController.clear();
+    _departmentController.clear();
+    _timeController.clear();
+    _urlController.clear();
+    await _savePrefs();
+    if (!mounted) return;
+    _showSnack('要換醫院：請重新輸入想掛號的醫院，再按「開始引導」');
+  }
+
+  /// 沒填網址時，用 Google 搜尋「醫院名稱 網路手機掛號預約」，再由 AI 引導點進官方網站。
   String _resolveStartUrl(String hospital) {
     var url = _urlController.text.trim();
     if (url.isEmpty) {
-      return 'https://www.google.com/search?q=${Uri.encodeQueryComponent('$hospital 網路掛號')}';
+      return 'https://www.google.com/search?q=${Uri.encodeQueryComponent('$hospital 網路手機掛號預約')}';
     }
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
       url = 'https://$url';
@@ -131,7 +177,7 @@ class _HospitalHelperScreenState extends State<HospitalHelperScreen>
     try {
       final res = await http
           .get(Uri.parse('$backendUrl/health'))
-          .timeout(const Duration(seconds: 4));
+          .timeout(const Duration(seconds: 15)); // 雲端伺服器閒置後第一次連線要多等一下
       return res.statusCode == 200;
     } catch (e) {
       debugPrint('引導伺服器連線失敗: $e');
@@ -156,7 +202,7 @@ class _HospitalHelperScreenState extends State<HospitalHelperScreen>
     if (!await _checkBackend(backendUrl)) {
       if (!mounted) return;
       setState(() => _starting = false);
-      _showSnack('連不上引導伺服器（$backendUrl），請確認伺服器已啟動');
+      _showSnack('連不上引導伺服器（$backendUrl），請確認網路，或伺服器已啟動');
       return;
     }
 
@@ -171,6 +217,7 @@ class _HospitalHelperScreenState extends State<HospitalHelperScreen>
         goal: goal,
         url: _resolveStartUrl(hospital),
         backendUrl: backendUrl,
+        accessToken: _tokenController.text.trim(),
       );
       if (!mounted) return;
       if (!inChrome) {
@@ -333,7 +380,7 @@ class _HospitalHelperScreenState extends State<HospitalHelperScreen>
               ],
             ),
             const SizedBox(height: 12),
-            _field(_hospitalController, '醫院名稱', '例如：光田綜合醫院'),
+            _field(_hospitalController, '醫院名稱', '例如：臺大醫院'),
             _field(_departmentController, '科別（可不填）', '例如：骨科'),
             _field(_timeController, '想看診的時間（可不填）', '例如：下週一上午'),
             _field(
@@ -357,6 +404,11 @@ class _HospitalHelperScreenState extends State<HospitalHelperScreen>
                     '引導伺服器網址',
                     _defaultBackendUrl,
                     keyboardType: TextInputType.url,
+                  ),
+                  _field(
+                    _tokenController,
+                    '通行碼（雲端伺服器有設定才需要）',
+                    '沒有就留空',
                   ),
                 ],
               ),

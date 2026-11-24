@@ -27,14 +27,19 @@ class GuideChannel {
     required String goal,
     required String url,
     required String backendUrl,
+    String accessToken = '',
   }) async {
     final result = await _channel.invokeMapMethod<String, dynamic>('startGuide', {
       'goal': goal,
       'url': url,
       'backendUrl': backendUrl,
+      'accessToken': accessToken,
     });
     return result?['openedInChrome'] == true;
   }
 
   static Future<void> stopGuide() => _channel.invokeMethod('stopGuide');
+
+  /// 引導途中被帶回 App 的原因（例如 'switch_hospital'），讀一次就清掉；沒有則為 null。
+  static Future<String?> consumeReturnReason() => _channel.invokeMethod<String>('consumeReturnReason');
 }

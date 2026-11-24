@@ -65,8 +65,8 @@ class ScreenSnapshot(
 object ScreenReader {
 
     private const val MAX_VISIBLE = 150
-    private const val MAX_OFFSCREEN = 80
-    private const val MAX_TEXT = 80
+    private const val MAX_OFFSCREEN = 250
+    private const val MAX_TEXT = 120
     private const val CHROME_ID_PREFIX = "com.android.chrome:id/"
     private const val URL_BAR_ID = "com.android.chrome:id/url_bar"
 

@@ -1,19 +1,54 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <uses-permission android:name="android.permission.INTERNET"/>
-    <!-- 真機必須的相機與相簿存取權限 -->
+
+    <!-- 網路權限 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- 服藥通知權限 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <!-- 相機與相簿權限 -->
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
+
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-    <!-- 針對舊版 Android 真機的相容性權限 -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
+
+    <!-- 舊版 Android 相容性 -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
 
     <application
         android:label="projectfront"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
-        
-        <!-- ==================== 主 MainActivity 開始 ==================== -->
+
+        <!-- 服藥通知 -->
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
+            android:exported="false" />
+
+        <!-- 重開機恢復服藥通知 -->
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 主程式 -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -23,65 +58,73 @@
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
-            
-            <!-- Meta 必要的設定（必須保留在主要啟動的 MainActivity 內） -->
-            <meta-data android:name="com.facebook.sdk.ApplicationId" android:value="@string/facebook_app_id"/>
-            <meta-data android:name="com.facebook.sdk.ClientToken" android:value="@string/facebook_client_token"/>
 
-            <!-- 1. 原本維持不變的：主 App 啟動意圖過濾器 -->
+            <!-- Facebook SDK -->
+            <meta-data
+                android:name="com.facebook.sdk.ApplicationId"
+                android:value="@string/facebook_app_id" />
+
+            <meta-data
+                android:name="com.facebook.sdk.ClientToken"
+                android:value="@string/facebook_client_token" />
+
+            <!-- App 啟動入口 -->
             <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- LINE 登入或分享用的意圖過濾器 -->
+            <!-- LINE 登入 -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="line3rdp.2012160109" />
             </intent-filter>
-            
+
             <meta-data
                 android:name="io.flutter.embedding.android.ImpellerBackend"
                 android:value="false" />
+
         </activity>
-        <!-- ==================== 主 MainActivity 結束 ==================== -->
 
-
-        <!-- ==================== Facebook SDK 獨立 Activity 區塊 (已移出嵌套) ==================== -->
-        <activity 
+        <!-- Facebook SDK -->
+        <activity
             android:name="com.facebook.FacebookActivity"
             android:configChanges="keyboard|keyboardHidden|screenLayout|screenSize|orientation"
             android:label="@string/app_name" />
-            
+
         <activity
             android:name="com.facebook.CustomTabActivity"
             android:exported="true">
+
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="@string/fb_login_protocol_scheme" />
             </intent-filter>
-        </activity>
-        <!-- =================================================================================== -->
 
-        <!-- ==================== AI 就醫夥伴：掛號引導無障礙服務 ==================== -->
+        </activity>
+
+        <!-- AI 就醫夥伴：無障礙引導服務 -->
         <service
             android:name=".guide.GuideAccessibilityService"
             android:label="@string/guide_accessibility_label"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
             android:exported="false">
+
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
             </intent-filter>
+
             <meta-data
                 android:name="android.accessibilityservice"
                 android:resource="@xml/guide_accessibility_config" />
+
         </service>
 
-        <!-- AI 就醫夥伴：引導途中的對話視窗（獨立 task，關閉後回到 Chrome） -->
+        <!-- AI 就醫夥伴：對話視窗 -->
         <activity
             android:name=".guide.GuideChatActivity"
             android:exported="false"
@@ -91,25 +134,34 @@
             android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|uiMode|density|fontScale"
             android:windowSoftInputMode="adjustResize|stateHidden" />
-        <!-- =================================================================================== -->
 
-
-        <!-- Don't delete the meta-data below.
-             This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
+        <!-- Flutter v2 Embedding -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
     </application>
 
-    <!-- 補上 Android 11+ 必備的套件查詢宣告，確保能與真機的 App 順利互動 -->
     <queries>
-        <!-- 原本 Flutter 引擎自帶的文字處理查詢 -->
+
+        <!-- Flutter 文字處理 -->
         <intent>
-            <action android:name="android.intent.action.PROCESS_TEXT"/>
-            <data android:mimeType="text/plain"/>
+            <action android:name="android.intent.action.PROCESS_TEXT" />
+            <data android:mimeType="text/plain" />
         </intent>
-        <!-- Meta/Facebook 登入與分享所需的應用程式查詢宣告 -->
+
+        <!-- TTS 文字轉語音 -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+
+        <!-- Chrome 瀏覽器 -->
+        <package android:name="com.android.chrome" />
+
+        <!-- Facebook 登入與分享 -->
         <package android:name="com.facebook.katana" />
         <package android:name="com.facebook.orca" />
+
     </queries>
+
 </manifest>

@@ -11,7 +11,7 @@ import org.json.JSONObject
  */
 object GuideSession {
 
-    data class Step(val message: String, val targetLabel: String)
+    data class Step(val message: String, val targetLabel: String, val page: String = "")
 
     /** 對話視窗裡的一則訊息。role："user"、"assistant"，或只在畫面上顯示的 "system"。 */
     data class ChatMessage(val role: String, val text: String)
@@ -32,6 +32,10 @@ object GuideSession {
     var backendUrl = ""
         private set
 
+    /** 雲端伺服器的通行碼（沒有設定就是空字串）。 */
+    var accessToken = ""
+        private set
+
     /** 每次開始或停止都會加 1，用來丟棄過期的 AI 回應。 */
     var generation = 0
         private set
@@ -44,9 +48,16 @@ object GuideSession {
     /** 打開對話視窗時，Chrome 當下的畫面（給 AI 回答「要按哪裡」用）。 */
     var lastScreen: JSONObject? = null
 
-    fun start(goal: String, backendUrl: String) {
+    /**
+     * 引導結束、帶使用者回 App 的原因（例如 "switch_hospital"）。
+     * Flutter 回到前景時讀取一次（GuideChannel.consumeReturnReason）就清掉；stop() 不會清掉它。
+     */
+    var returnReason: String? = null
+
+    fun start(goal: String, backendUrl: String, accessToken: String = "") {
         this.goal = goal
         this.backendUrl = backendUrl.trimEnd('/')
+        this.accessToken = accessToken.trim()
         history.clear()
         chatMessages.clear()
         lastScreen = null
@@ -94,7 +105,9 @@ object GuideSession {
 
     fun historyJson(): JSONArray = JSONArray().apply {
         history.forEach {
-            put(JSONObject().put("message", it.message).put("target_text", it.targetLabel))
+            val step = JSONObject().put("message", it.message).put("target_text", it.targetLabel)
+            if (it.page.isNotEmpty()) step.put("page", it.page)
+            put(step)
         }
     }
 }
