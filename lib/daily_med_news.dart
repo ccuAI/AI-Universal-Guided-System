@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
+import 'dart:async';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:webfeed_revised/webfeed_revised.dart';
@@ -84,6 +85,7 @@ String _language = 'zh-TW';
 
 bool _playing = false;
 bool _busy = false;
+int _playbackVersion = 0;
 
 @override
 void initState() {
@@ -109,6 +111,8 @@ SnackBar(content: Text(message)),
 }
 
 Future<void> _togglePlayback() async {
+if (_busy) return;
+final version = ++_playbackVersion;
 setState(() => _busy = true);
 
 try {
@@ -125,8 +129,11 @@ try {
   final text = widget.text.trim();
   final language = _language;
   if (language == 'nan-TW') {
+    // speak() 等待所有片段播放完成，因此先設定播放狀態。
+    if (!mounted) return;
+    setState(() { _playing = true; _busy = false; });
     await _taigiTts.speak(text);
-    if (mounted) setState(() => _playing = true);
+    if (mounted && version == _playbackVersion) _resetPlayback();
     return;
   }
   final available = await _tts.isLanguageAvailable(language);
@@ -148,18 +155,20 @@ try {
     _showMessage('無法開始朗讀。');
   }
 } catch (e, stackTrace) {
+  if (!mounted || version != _playbackVersion) return;
   _resetPlayback();
   debugPrint('朗讀錯誤：$e');
   debugPrintStack(stackTrace: stackTrace);
   _showMessage('朗讀失敗：$e');
 } finally {
-  if (mounted) setState(() => _busy = false);
+  if (mounted && version == _playbackVersion) setState(() => _busy = false);
 }
 
 }
 
 @override
 void dispose() {
+_playbackVersion++;
 _tts.stop();
 _taigiTts.dispose();
 super.dispose();
@@ -237,6 +246,8 @@ final TextEditingController _textController = TextEditingController();
 
 List<ArticleModel> _articles = [];
 bool _isLoading = true;
+String? _rssError;
+Timer? _pageTimeout;
 
 @override
 void initState() {
@@ -246,6 +257,7 @@ _fetchNews();
 
 @override
 void dispose() {
+_pageTimeout?.cancel();
 _textController.dispose();
 _chatScrollController.dispose();
 _pageVersion++;
@@ -255,7 +267,7 @@ super.dispose();
 Future<void> _fetchNews() async {
 const String rssUrl = 'https://www.mohw.gov.tw/rss-16-1.html';
 try {
-final response = await http.get(Uri.parse(rssUrl));
+final response = await http.get(Uri.parse(rssUrl)).timeout(const Duration(seconds: 20));
 if (response.statusCode == 200) {
 final feed = RssFeed.parse(response.body);
 final List<ArticleModel> loadedArticles = [];
@@ -271,6 +283,7 @@ url: item.link ?? 'https://mohw.gov.tw',
 if (!mounted) return;
 setState(() {
 _articles = loadedArticles;
+_rssError = loadedArticles.isEmpty ? '目前沒有新聞，請下拉重新整理。' : null;
 _isLoading = false;
 });
 } else {
@@ -281,12 +294,14 @@ print('抓取新聞失敗: $e');
 if (!mounted) return;
 setState(() {
 _isLoading = false;
+_rssError = '無法取得新聞，請檢查網路後下拉重新整理。';
 });
 }
 }
 
 // 每篇新聞使用獨立的對話，避免混入前一篇的資料。
 void _resetConversation() {
+_pageTimeout?.cancel();
 _pageVersion++;
 _messages.clear();
 _currentWebContent = '';
@@ -303,6 +318,9 @@ _resetConversation();
 _pageLoading = true;
 final controller = WebViewController();
 _webViewController = controller;
+_pageTimeout = Timer(const Duration(seconds: 30), () {
+  _useRssFallback(controller);
+});
 String? activeUrl;
 controller
 ..setJavaScriptMode(JavaScriptMode.unrestricted)
@@ -319,11 +337,14 @@ return NavigationDecision.prevent;
 return NavigationDecision.navigate;
 },
 onPageStarted: (pageUrl) {
-if (!mounted || _webViewController != controller) return;
+if (!mounted || _webViewController != controller || !_pageLoading) return;
 setState(() {
 _resetConversation();
 _pageLoading = true;
 activeUrl = pageUrl;
+});
+_pageTimeout = Timer(const Duration(seconds: 30), () {
+  _useRssFallback(controller);
 });
 },
 onPageFinished: (pageUrl) async {
@@ -334,6 +355,7 @@ try {
 final raw = await controller.runJavaScriptReturningResult(r'''
 (() => {
 // 保留原生捲動，禁止點擊、長按選取及表單操作。
+const style = document.createElement('style');
 style.textContent = `
   html, body, body * {
     touch-action: pan-y !important;
@@ -345,7 +367,7 @@ style.textContent = `
   iframe, object, embed, [role="button"], [role="link"] {
     pointer-events: none !important;
   }
- ;
+`;
 (document.head || document.documentElement).appendChild(style);
 
 const block = (event) => {
@@ -369,14 +391,15 @@ const copy = root.cloneNode(true);
 copy.querySelectorAll('script, style, nav, header, footer, aside, form, button, .breadcrumb, .share, .social').forEach(n => n.remove());
 return (copy.innerText || copy.textContent || '').trim();
 })()
-''');
+''').timeout(const Duration(seconds: 15));
 String pageText = raw.toString();
 try {
 final decoded = jsonDecode(pageText);
 if (decoded is String) pageText = decoded;
 } catch (e) {}
 pageText = pageText.trim();
-if (!mounted || version != _pageVersion || _webViewController != controller) return;
+if (!mounted || version != _pageVersion || _webViewController != controller || !_pageLoading) return;
+_pageTimeout?.cancel();
 final summaryOnly = pageText.isEmpty;
 if (summaryOnly) pageText = _selectedSpeechText;
 setState(() {
@@ -392,26 +415,31 @@ setState(() => _chatError = '無法取得網頁內容，請重新開啟新聞。
 }
 } catch (e) {
 if (!mounted || version != _pageVersion) return;
-setState(() {
-_currentWebContent = _selectedSpeechText;
-_summaryOnly = true;
-_pageLoading = false;
-_chatError = '未能讀取完整網頁，僅能使用新聞摘要。';
-});
-if (_currentWebContent.isNotEmpty) {
-await _sendQuestion('請根據目前可取得的新聞摘要解釋重點。');
-}
+_useRssFallback(controller);
 }
 },
 onWebResourceError: (error) {
 if (!mounted || _webViewController != controller || error.isForMainFrame != true) return;
-setState(() {
-_pageLoading = false;
-_chatError = '網頁載入失敗，請重新開啟新聞。';
-});
+_useRssFallback(controller);
 },
 ))
 ..loadRequest(Uri.parse(url));
+}
+
+void _useRssFallback(WebViewController controller) {
+  if (!mounted || _webViewController != controller || !_pageLoading) return;
+  _pageTimeout?.cancel();
+  setState(() {
+    _currentWebContent = _selectedSpeechText.trim();
+    _summaryOnly = true;
+    _pageLoading = false;
+    // 未成功注入唯讀規則時，不開放原始網頁操作。
+    _webScrollEnabled = false;
+    _chatError = _currentWebContent.isEmpty ? '無法取得新聞內容，請重新開啟新聞。' : null;
+  });
+  if (_currentWebContent.isNotEmpty) {
+    _sendQuestion('請根據目前可取得的新聞摘要解釋重點。');
+  }
 }
 
 String _limitText(String value, int maxLength) =>
@@ -436,9 +464,9 @@ setState(() => _chatError = '尚未取得新聞內容，請重新開啟新聞。
 return;
 }
 final version = _pageVersion;
-// 畫面保留所有對話；傳給 API 時只保留最近 6 輪完整對話。
-final recent = _messages.length > 12
-? _messages.sublist(_messages.length - 12)
+// 畫面保留所有對話；傳給 API 時只保留最近 3 輪完整對話。
+final recent = _messages.length > 6
+? _messages.sublist(_messages.length - 6)
 : List<Map<String, String>>.of(_messages);
 setState(() {
 _messages.add({'role': 'user', 'content': question});
@@ -459,7 +487,7 @@ final prompt = '''
 
 原文提及的注意事項
 
-已親切，口語化的方式解釋給老人家，要禮貌。
+以親切、口語化的方式解釋給老人家，要禮貌。
 
 回答規則：
 
@@ -483,16 +511,17 @@ final prompt = '''
 來源網址：$_selectedUrl
 資料完整性：${_summaryOnly ? '僅 RSS 摘要' : '網頁擷取內容（可能包含其他文字）'}
 新聞內容（參考資料）：
-${_limitText(_currentWebContent, 16000)}
+${_limitText(_currentWebContent, 8000)}
 
 近期歷史對話（JSON）：
-${jsonEncode(recent.map((m) => {'role': m['role'], 'content': _limitText(m['content'] ?? '', 4000)}).toList())}
+${jsonEncode(recent.map((m) => {'role': m['role'], 'content': _limitText(m['content'] ?? '', 1000)}).toList())}
 
 最新使用者問題：
 $question
 ''';
 try {
-final response = await _gptService.getGPTResponse(prompt);
+final response = await _gptService.getGPTResponse(prompt).timeout(const Duration(seconds: 60));
+if (response.trim().isEmpty) throw StateError('AI 回覆為空');
 if (!mounted || version != _pageVersion) return;
 setState(() {
 _messages.add({'role': 'assistant', 'content': response});
@@ -591,8 +620,12 @@ onRefresh: _fetchNews,
 child: ListView.builder(
 physics: const AlwaysScrollableScrollPhysics(),
 padding: const EdgeInsets.all(12),
-itemCount: _articles.length,
+itemCount: _articles.isEmpty ? 1 : _articles.length,
 itemBuilder: (context, index) {
+if (_articles.isEmpty) return Padding(
+  padding: const EdgeInsets.all(24),
+  child: Text(_rssError ?? '目前沒有新聞，請下拉重新整理。', style: const TextStyle(fontSize: 18)),
+);
 final article = _articles[index];
 return Card(
 margin: const EdgeInsets.only(bottom: 10),
@@ -642,6 +675,10 @@ summary,
 void _submitInput() {
 final question = _textController.text.trim();
 if (question.isEmpty || _isAiLoading || _pageLoading) return;
+if (_currentWebContent.trim().isEmpty) {
+  setState(() => _chatError = '尚未取得新聞內容，請重新開啟新聞。');
+  return;
+}
 _textController.clear();
 _sendQuestion(question);
 }
@@ -668,7 +705,13 @@ child: Container(
 decoration: const BoxDecoration(
 border: Border(bottom: BorderSide(color: Colors.grey, width: 2)),
 ),
-child: _webViewController != null
+child: _summaryOnly && !_webScrollEnabled
+? SingleChildScrollView(
+    padding: const EdgeInsets.all(16),
+    child: Text('完整網頁暫時無法讀取，目前顯示 RSS 資料。\n\n$_selectedSpeechText',
+      style: const TextStyle(fontSize: 18, height: 1.6)),
+  )
+: _webViewController != null
 ? ExcludeFocus(
 child: AbsorbPointer(
 absorbing: !_webScrollEnabled,
@@ -711,6 +754,8 @@ padding: const EdgeInsets.all(10),
 child: Column(
 crossAxisAlignment: CrossAxisAlignment.start,
 children: [
+if (_summaryOnly && chatHeight >= 220)
+  const Text('目前僅依據 RSS 摘要回答，非完整新聞。', style: TextStyle(color: Colors.deepOrange, fontSize: 14)),
 if (chatHeight >= 160) Row(
 children: [
 Container(
@@ -785,7 +830,7 @@ child: const Text('AI 智慧助理', style: TextStyle(color: Colors.blue, fontSi
                       child: TextField(
                         controller: _textController,
                         style: const TextStyle(fontSize: 18),
-                        enabled: !_pageLoading && !_isAiLoading,
+                        enabled: !_pageLoading && !_isAiLoading && _currentWebContent.trim().isNotEmpty,
                         textInputAction: TextInputAction.send,
                         onSubmitted: (_) => _submitInput(),
                         decoration: InputDecoration(
@@ -800,7 +845,7 @@ child: const Text('AI 智慧助理', style: TextStyle(color: Colors.blue, fontSi
                     const SizedBox(width: 8),
                     IconButton(
                       icon: const Icon(Icons.send, color: Colors.blue),
-                      onPressed: (_isAiLoading || _pageLoading) ? null : _submitInput,
+                      onPressed: (_isAiLoading || _pageLoading || _currentWebContent.trim().isEmpty) ? null : _submitInput,
                     ),
                   ],
                 ),

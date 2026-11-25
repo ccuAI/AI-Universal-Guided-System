@@ -15,3 +15,25 @@ x86/
 *.[Cc]ache
 # but keep track of directories ending in .cache
 !*.[Cc]ache/
+.env
+**/.env
+!.env.example
+!**/.env.example
+**/node_modules/
+android/build/
+android/key.properties
+*.jks
+*.keystore
+# Python 後端
+**/__pycache__/
+**/.venv/
+**/api_env/
+
+# Android 本機設定
+android/local.properties
+android/.gradle/
+
+# AI 模型權重
+*.gguf
+*.safetensors
+*.pth
